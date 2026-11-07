@@ -1,0 +1,21 @@
+db_url: sqlite:///data/auction.db
+raw_cache_dir: data/raw          # lưu HTML/JSON gốc để debug & parse lại; để trống để tắt
+export_dir: data/exports
+log_level: INFO
+
+http:
+  timeout: 30
+  max_retries: 4
+  delay_seconds: 1.5             # khoảng cách tối thiểu giữa 2 request (mỗi nguồn ghi đè trong sources/*.yaml)
+  concurrency: 1                 # số luồng tải chi tiết song song
+  user_agent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Safari/537.36"
+  verify_tls: true
+
+crawl:
+  max_pages: 50                  # số trang danh sách tối đa mỗi lần chạy
+  fetch_detail: true
+  stop_when_page_all_seen: true  # chạy tăng dần: dừng khi cả trang đã có trong DB
+
+schedule:                        # dùng với lệnh `auction schedule`
+  cron: "17 */6 * * *"           # 6 giờ/lần (phút lẻ để tránh giờ chẵn)
+  ocr_limit: 0                   # >0: mỗi lượt OCR giá từ PDF cho N tin taisancong (cần tesseract)

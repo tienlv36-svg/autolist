@@ -1,0 +1,120 @@
+# Bộ quy tắc phân loại theo từ khoá (không phân biệt dấu/hoa thường, khớp nguyên từ).
+# - field_weights: trọng số theo trường dữ liệu cho từng chiều phân loại
+# - weight: điểm mỗi từ khoá; exclude: bỏ qua trường nếu chứa; fields: chỉ xét các trường này
+# Đã tinh chỉnh trên ~1.100 tin thật (11/2026). Sửa xong: `auction reclassify`, kiểm tra: `auction eval-classify`.
+# LƯU Ý: từ khoá được bỏ dấu khi so khớp -> tránh từ ngắn dễ trùng ("bà" -> "ba" = số ba; "sở" -> "sở hữu").
+field_weights:
+  asset_type: {title: 2, asset_name: 1, official_type: 1.5, asset_types: 1.5, asset_owner: 0, content: 0.3}
+  origin:     {title: 1, asset_name: 0.5, official_type: 2, asset_types: 2, asset_owner: 3, content: 0.3}
+
+asset_type:
+  bien_so_xe:
+    label: "Biển số xe"
+    weight: 6
+    keywords: ["biển số xe ô tô", "biển số định danh", "quyền sử dụng biển số", "đấu giá biển số", "biển số xe máy"]
+  khoan_no:
+    label: "Khoản nợ, quyền đòi nợ"
+    weight: 5
+    keywords: ["khoản nợ", "quyền thu hồi", "quyền đòi nợ", "hợp đồng tín dụng", "dư nợ", "nợ xấu", "tài sản là nợ"]
+  quyen_su_dung_dat:
+    label: "Quyền sử dụng đất"
+    weight: 3
+    keywords: ["quyền sử dụng đất", "qsdđ", "qsdd", "thửa đất", "thửa", "lô đất", "ô đất", "khu đất", "giao đất",
+               "đất ở", "đất odt", "đất ont", "đất cln", "đất luc", "đất nông nghiệp", "đất thương mại", "m2 đất",
+               "tờ bản đồ", "tbđ", "đất xen ghép", "phân lô"]
+  cho_thue_mat_bang:
+    label: "Cho thuê mặt bằng, quyền khai thác"
+    weight: 3
+    keywords: ["mặt bằng", "căn tin", "canteen", "ki ốt", "kiốt", "kiot", "quyền khai thác mặt bằng", "cho thuê tài sản",
+               "nhà xe", "bãi giữ xe", "trông giữ xe", "quyền khai thác bến", "bến đò", "quyền khai thác chợ",
+               "quyền khai thác", "nhà thuốc"]
+    exclude: ["khoáng sản", "mỏ "]
+  nha_o_cong_trinh:
+    label: "Nhà ở, công trình"
+    weight: 2
+    keywords: ["nhà ở", "căn hộ", "nhà đất", "tài sản gắn liền với đất", "công trình xây dựng", "trụ sở", "nhà xưởng",
+               "căn nhà", "nhà cấp", "biệt thự", "nhà kho", "chung cư"]
+  phuong_tien:
+    label: "Phương tiện giao thông"
+    weight: 2
+    keywords: ["xe ô tô", "ô tô", "ôtô", "xe ôtô", "xe máy", "mô tô", "xe mô tô", "phương tiện", "tàu", "tàu cá",
+               "du thuyền", "sà lan", "xà lan", "xe tải", "xe con", "xe bán tải", "xe khách", "biển kiểm soát",
+               "xe chuyên dùng", "xe cứu thương", "xe ben", "ca nô"]
+  may_moc_thiet_bi:
+    label: "Máy móc, thiết bị"
+    weight: 2
+    keywords: ["máy móc", "thiết bị", "dây chuyền", "máy tính", "máy phát", "máy thổi", "máy ép", "máy quấn",
+               "máy cắt", "máy in", "máy xúc", "máy ủi", "máy đào", "máy cuốc", "máy thu", "máy chia", "model",
+               "điều hòa", "công cụ dụng cụ", "trang thiết bị"]
+  hang_hoa_vat_tu:
+    label: "Hàng hoá, vật tư"
+    weight: 2
+    keywords: ["hàng hóa", "hàng hoá", "vật tư", "lô hàng", "nguyên liệu", "hàng tồn kho", "gạo", "thóc",
+               "dự trữ quốc gia", "phân bón", "xăng dầu", "hàng dự trữ"]
+  phe_lieu:
+    label: "Phế liệu, tài sản thanh lý"
+    weight: 3
+    keywords: ["phế liệu", "phế thải", "thanh lý", "vật tư thu hồi", "vật liệu thu hồi", "thu hồi sau phá dỡ",
+               "tài sản hư hỏng", "hư hỏng", "chất thải", "vttb", "hết khấu hao", "phá dỡ"]
+  khoang_san:
+    label: "Quyền khai thác khoáng sản"
+    weight: 4
+    keywords: ["khoáng sản", "quyền khai thác khoáng sản", "mỏ đá", "mỏ cát", "cát xây dựng", "đất san lấp",
+               "cát lòng sông", "mỏ đất", "vật liệu xây dựng thông thường"]
+  lam_san:
+    label: "Gỗ, lâm sản, cây trồng"
+    weight: 3
+    keywords: ["gỗ", "lâm sản", "rừng trồng", "cây cao su", "cây keo", "cây xanh", "keo lai", "bạch đàn", "rừng sản xuất"]
+  co_phan_von:
+    label: "Cổ phần, phần vốn góp"
+    weight: 4
+    keywords: ["cổ phần", "cổ phiếu", "phần vốn góp"]
+  quyen_khac:
+    label: "Quyền tài sản khác (tần số, công chứng...)"
+    weight: 3
+    keywords: ["tần số", "quyền thu phí", "quyền kinh doanh", "phòng công chứng", "quyền nhận chuyển đổi",
+               "quyền sử dụng tần số", "quyền đặt tên"]
+
+origin:
+  thi_hanh_an:
+    label: "Thi hành án"
+    weight: 3
+    keywords: ["thi hành án", "chi cục thi hành án", "cục thi hành án", "kê biên", "chấp hành viên", "thads"]
+  ngan_hang_bao_dam:
+    label: "Tài sản bảo đảm, ngân hàng"
+    weight: 3
+    keywords: ["ngân hàng", "tài sản bảo đảm", "tài sản thế chấp", "nợ xấu", "vamc", "amc", "quản lý nợ",
+               "agribank", "vietcombank", "bidv", "vietinbank", "techcombank", "vpbank", "sacombank", "mbbank",
+               "acb", "shb", "hdbank", "tpbank", "ocb", "msb", "eximbank", "lpbank", "seabank", "scb", "pvcombank",
+               "tổ chức tín dụng", "công ty tài chính"]
+  tich_thu:
+    label: "Tịch thu, xác lập sở hữu toàn dân"
+    weight: 3
+    keywords: ["tịch thu", "tang vật", "vi phạm hành chính", "sung công", "sung quỹ", "xác lập quyền sở hữu toàn dân",
+               "quyền sở hữu toàn dân", "xử phạt", "vô chủ"]
+  pha_san:
+    label: "Phá sản"
+    weight: 4
+    keywords: ["phá sản", "quản tài viên", "quản lý, thanh lý tài sản"]
+  tai_san_cong:
+    label: "Tài sản công (cơ quan, đơn vị nhà nước)"
+    weight: 2
+    fields: [asset_owner, official_type, text]
+    keywords: ["tài sản công", "tài sản nhà nước", "ubnd", "ủy ban nhân dân", "uỷ ban nhân dân", "sở", "ban quản lý",
+               "trung tâm phát triển quỹ đất", "kho bạc", "cơ quan nhà nước", "bệnh viện", "trường", "học viện",
+               "đại học", "công an", "bộ chỉ huy", "quân đoàn", "lữ đoàn", "sư đoàn", "chi cục", "cục", "hạt kiểm lâm",
+               "phòng kinh tế", "trung tâm dịch vụ", "trung tâm cung ứng", "trung tâm", "văn phòng hđnd",
+               "hội đồng nhân dân", "dự trữ nhà nước", "viện", "đài", "bảo tàng", "nhà hát", "thư viện",
+               "ban quản lý dự án", "kiểm lâm", "đảng ủy", "đảng uỷ", "ban qlda", "qlda", "vườn quốc gia",
+               "bộ tư lệnh", "mặt trận", "báo", "phát thanh", "truyền hình", "quỹ đầu tư phát triển", "hội",
+               "ubdn", "ban quản lý rừng"]
+  doanh_nghiep_ca_nhan:
+    label: "Doanh nghiệp, cá nhân"
+    weight: 1.5
+    keywords: ["công ty", "doanh nghiệp", "hộ kinh doanh", "hợp tác xã", "của ông", "của bà", "hộ gia đình",
+               "tài sản thuộc sở hữu của cá nhân", "cá nhân, tổ chức"]
+  ca_nhan_so_huu:
+    label: "Doanh nghiệp, cá nhân"     # gộp nhãn với nhóm trên khi thống kê
+    weight: 1.5
+    fields: [asset_owner]              # chỉ xét tên người có tài sản: "Ông Nguyễn Văn A", "Bà ..."
+    keywords: ["ông", "bà"]

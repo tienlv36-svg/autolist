@@ -1,0 +1,31 @@
+# Trang thông tin điện tử về tài sản công (Bộ Tài chính) - mục Thông tin bán đấu giá
+# Cấu trúc đã kiểm chứng 07/11/2026 (xem docstring sources/taisancong.py).
+name: taisancong
+label: "Bộ Tài chính - taisancong.vn"
+base_url: https://taisancong.vn
+fetcher: http
+mode: html
+
+http:
+  delay_seconds: 1.0
+  concurrency: 2
+
+list:
+  url: https://taisancong.vn/niem-yet-gia-dau-gia-dau-thau/thong-tin-ban-dau-gia
+  pagination:
+    type: template
+    url_template: "https://taisancong.vn/niem-yet-gia-dau-gia-dau-thau/thong-tin-ban-dau-gia&BRSR={offset}"
+    page_size: 20
+    start: 1
+  item: "div.all-daugia div.table-info div.tbody > div.row"
+  fields:
+    title:        {css: ".b-tsb a", attr: text}
+    url:          {css: ".b-tsb a", attr: href}
+    asset_owner:  {css: ".b-dvico", attr: text}
+    auction_org:  {css: ".b-dvb", attr: text}
+    registration: {css: ".b-tdban", attr: text}
+    auction_date: {css: ".b-ngayban", attr: text}
+    auction_place: {css: ".b-address", attr: text}
+  source_id_regex: "-(\\d+)\\.html?$"
+
+detail: {}   # xử lý bằng code (bảng 14 dòng cố định) trong sources/taisancong.py

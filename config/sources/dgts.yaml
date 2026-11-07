@@ -1,0 +1,26 @@
+# Cổng thông tin điện tử quốc gia về đấu giá tài sản - Bộ Tư pháp
+# Dữ liệu lấy qua API JSON công khai của chính trang (xem docstring sources/dgts.py).
+# Đã kiểm chứng 07/11/2026: ~657.000 thông báo, ~5.000 thông báo mới/tuần.
+name: dgts
+label: "Bộ Tư pháp - dgts.moj.gov.vn"
+base_url: https://dgts.moj.gov.vn
+fetcher: http
+mode: api
+
+http:
+  delay_seconds: 0.6     # ~1,6 request/giây cho toàn nguồn (dùng chung mọi luồng)
+  concurrency: 3         # số luồng tải chi tiết (propertyInfo) song song
+  timeout: 60
+
+api:
+  search_path: /portal/search/auction-notice
+  property_path: /portal/propertyInfo
+  page_size: 500         # API chấp nhận tối đa ít nhất 500 tin/trang
+  extra_params: {}       # vd {provinceId: 100001} để chỉ lấy Hà Nội (id từ /common/getListProvince)
+
+# true: tải thêm trang HTML chi tiết để lấy địa chỉ người có tài sản & địa điểm đấu giá
+# (thêm 1 request ~80KB/tin). Giá, tiền đặt trước, nơi có tài sản đã có từ API propertyInfo.
+detail_html: false
+
+list:
+  url: https://dgts.moj.gov.vn/thong-bao-cong-khai-viec-dau-gia.html
