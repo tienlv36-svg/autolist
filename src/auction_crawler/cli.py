@@ -64,6 +64,7 @@ def crawl(
     from .pipeline import crawl_source
 
     s, repo = _setup()
+    failed = []
     for name in source or all_sources():
         try:
             st = crawl_source(name, s, repo, max_pages=max_pages, fetch_detail=not no_detail, full=full,
@@ -71,7 +72,10 @@ def crawl(
             console.print(f"[green]{name}[/]: trang={st.pages} tìm={st.found} mới={st.inserted} "
                           f"cập nhật={st.updated} không đổi={st.unchanged} lỗi={st.errors}")
         except Exception as e:
+            failed.append(name)
             console.print(f"[red]{name} thất bại:[/] {e}")
+    if failed:
+        raise typer.Exit(1)   # mã lỗi để script / lịch chạy biết có nguồn thất bại
 
 
 @app.command()

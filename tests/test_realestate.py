@@ -55,8 +55,12 @@ def test_ward_prefers_current_name():
 def test_dimensions():
     i = extract("Kích thước mặt tiền rộng 12,7m, mặt hậu rộng 12,04m, chiều sâu bình quân 36,7m. Diện tích 466m2")
     assert (i.width, i.length) == (12.7, 36.7)
+    # "kích thước A x B" không nói chiều nào là ngang -> không suy luận
     i = extract("nhà xây dựng trên đất có kích thước 10,1m x 5,1m, cao 6,2m")
-    assert (i.width, i.length) == (5.1, 10.1)
+    assert (i.width, i.length) == (None, None)
+    # cạnh thửa ("phía Đông giáp ... chiều dài") không phải chiều dài thửa
+    i = extract("Phía Đông giáp hộ ông Bình có chiều dài 21,6m; Phía Tây giáp đường đê có chiều dài 21,43m")
+    assert i.length is None
 
 
 @pytest.mark.parametrize("title,form", [
@@ -76,11 +80,18 @@ def test_land_type_before_number():
     assert (i.land_area, i.residential_area, i.other_land_area) == (110.8, 100, 10.8)
 
 
-def test_total_not_less_than_parts():
+def test_multi_parcel_left_empty():
     t = ("Thửa đất số 61 tờ bản đồ số 13 diện tích 1.060,9m2 đất chuyên trồng lúa nước. "
          "Thửa đất số 62 tờ bản đồ số 13 diện tích 150m2 đất ở tại nông thôn")
     i = extract(t)
-    assert i.land_area == 1210.9 and i.residential_area == 150 and i.other_land_area == 1060.9
+    assert (i.land_area, i.residential_area, i.other_land_area, i.map_sheet, i.parcel_no) == (None,) * 5
+    assert i.multi and any("nhiều" in n for n in i.notes)
+    assert i.parcels == [("13", "61"), ("13", "62")]      # vẫn liệt kê để tham khảo
+
+
+def test_conflicting_areas_left_empty():
+    i = extract("Quyền sử dụng đất diện tích 80,0 m2 (Theo sơ đồ đo đạc diện tích còn 76,4 m2), thửa đất số 27, tờ bản đồ số 5")
+    assert i.land_area is None and i.parcel_no == "27"
 
 
 def test_purpose_after_total_sentence():
@@ -90,8 +101,29 @@ def test_purpose_after_total_sentence():
     assert (i.land_area, i.residential_area, i.other_land_area) == (369.1, 36, 333.1)
 
 
-def test_single_purpose_applies_to_total():
+def test_purpose_without_number_not_inferred():
+    # "mục đích sử dụng: Đất ở" không kèm số -> không tự gán toàn bộ là đất ở
     i = extract("thửa đất số: 464, tờ bản đồ số: 14, diện tích: 162,0m2, mục đích sử dụng đất: Đất ở tại đô thị, địa chỉ")
-    assert (i.land_area, i.residential_area) == (162, 162)
-    i = extract("Quyền sử dụng đất HNK diện tích thực tế 183,2m2 thuộc thửa đất số 188")
-    assert (i.land_area, i.other_land_area, i.residential_area) == (183.2, 183.2, None)
+    assert (i.land_area, i.residential_area) == (162, None)
+
+
+def test_province_strict():
+    from auction_crawler.realestate.extract import detect_province_strict
+    assert detect_province_strict("xã Mỹ Tân, tỉnh Đồng Tháp")[0] == "Đồng Tháp"
+    assert detect_province_strict("phường Định Hòa, tỉnh Bình Dương (nay là phường Chánh Hiệp, Tp. Hồ Chí Minh)")[0] == "TP. Hồ Chí Minh"
+    assert detect_province_strict("Tài sản thi hành án theo quy định của pháp luật") == (None, None)
+    assert detect_province_strict("lô 1 tại tỉnh Lâm Đồng, lô 2 tại tỉnh Gia Lai") == (None, None)
+
+
+def test_renumbered_parcel_and_boundary_refs():
+    t = ("Quyền sử dụng đất tại thửa đất số 1628, tờ bản đồ số 14 (nay là tờ bản đồ số 52), diện tích 195m2, "
+         "phía Bắc giáp thửa 620, phía Nam giáp thửa đất số 542")
+    i = extract(t)
+    assert (i.map_sheet, i.parcel_no, i.land_area, i.multi) == ("52", "1628", 195, False)
+
+
+def test_duplicate_asset_text_not_double_counted():
+    t = ("Tài sản đấu giá (lần 5) là: Quyền sử dụng 210,6 m2 đất (trong đó 150 m2 đất ở nông thôn, "
+         "60,6 m2 đất nuôi trồng thủy sản) thuộc thửa đất số 343, tờ bản đồ số 21")
+    i = extract(t, t, None, None, [t, "Xã Yên Phong, huyện Yên Mô"])
+    assert (i.land_area, i.residential_area, i.other_land_area, i.notes) == (210.6, 150, 60.6, [])

@@ -90,6 +90,7 @@ class Item:
     dup_group: int | None
     category: str
     info: RealEstateInfo
+    property_count: int | None = None
 
 
 class DSU:
@@ -124,7 +125,7 @@ def load_items(repo: Repository) -> list[Item]:
             NoticeRow.id, NoticeRow.source, NoticeRow.title, NoticeRow.asset_name, NoticeRow.address,
             NoticeRow.asset_owner, NoticeRow.origin, NoticeRow.province, NoticeRow.asset_type, NoticeRow.official_type,
             NoticeRow.starting_price, NoticeRow.deposit, NoticeRow.auction_date, NoticeRow.registration_end,
-            NoticeRow.publish_date, NoticeRow.dup_group, NoticeRow.owner_address)).all()
+            NoticeRow.publish_date, NoticeRow.dup_group, NoticeRow.owner_address, NoticeRow.property_count)).all()
         assets: dict[int, list[str]] = defaultdict(list)
         for nid, name, place in s.execute(select(AssetRow.notice_id, AssetRow.name, AssetRow.place)):
             assets[nid].extend(x for x in (name, place) if x)
@@ -134,9 +135,13 @@ def load_items(repo: Repository) -> list[Item]:
         if not cat:
             continue
         info = extract(r.title, r.asset_name, r.address, r.asset_type, assets.get(r.id))
-        out.append(Item(r.id, r.source, r.title, r.asset_owner, r.origin, r.province, r.address,
-                        r.starting_price, r.deposit, r.auction_date, r.registration_end, r.publish_date,
-                        r.dup_group, cat, info))
+        # giá: chỉ dùng giá chính thức khi nguồn đăng MỘT giá cho thông báo (kể cả gói "trọn gói" nhiều thửa
+        # bán chung 1 giá). Thông báo có nhiều tài sản, mỗi tài sản một giá -> không cộng, để trống.
+        single = (r.property_count or 1) == 1
+        out.append(Item(r.id, r.source, r.title, r.asset_owner, r.origin, info.province, r.address,
+                        r.starting_price if single else None, r.deposit if single else None,
+                        r.auction_date, r.registration_end, r.publish_date, r.dup_group, cat, info,
+                        r.property_count))
     return out
 
 
@@ -155,12 +160,9 @@ def cluster(items: list[Item], manual: dict[int, int]) -> list[list[Item]]:
     textk: dict[tuple, int] = {}
     dups: dict[int, int] = {}
     for it in items:
-        # chỉ dùng cặp (tờ, thửa) ĐẦU TIÊN = tài sản được đấu giá; các thửa nhắc sau thường là thửa gốc
-        # của dự án / hợp đồng thế chấp, dùng cả tập sẽ gộp nhầm các lô khác nhau
-        first = it.info.parcels[0] if it.info.parcels else None
-        full = tuple(first) if first and first[0] and first[1] else None
-        if full and it.province:
-            k = (it.province, strip_accents(it.info.ward or "") or _owner_key(it.owner), full)
+        # khoá mạnh: CHỈ khi tin xác định được duy nhất một cặp tờ/thửa và một xã/phường
+        if it.info.map_sheet and it.info.parcel_no and it.info.ward and it.province:
+            k = (it.province, strip_accents(it.info.ward), it.info.map_sheet.lstrip("0"), it.info.parcel_no.lstrip("0"))
             if k in strong:
                 dsu.union(strong[k], it.nid)
             else:
@@ -281,41 +283,62 @@ def _apply(s, prop: Property, members: list[Item], pn_all: dict, pn_by_prop: dic
     priced = [x for x in priced if x[1]]
     latest_g = sessions[-1]
     latest = max(latest_g, key=lambda x: (x.source == "dgts", x.price or 0))
-    rich = max(members, key=lambda x: (x.info.land_area is not None, x.info.floor_area is not None,
-                                       len(x.info.parcels), x.auction_date or datetime.min))
     prop.title = (latest.title or prop.title)[:500]
     prop.category = "nha_dat" if any(m.category == "nha_dat" for m in members) else latest.category
     prop.sale_form = latest.info.sale_form
     prop.owner_type = latest.origin
     prop.owner_name = latest.owner
-    prop.province = latest.province or next((m.province for m in members if m.province), None)
-    prop.ward = next((m.info.ward for m in sorted(members, key=lambda x: x.source != "dgts") if m.info.ward), None)
-    prop.address = next((m.address for m in members if m.address), None)
-    for f in ("land_area", "residential_area", "other_land_area", "floor_area", "width", "length"):
-        setattr(prop, f, getattr(rich.info, f))
+    # thuộc tính: chỉ nhận khi các thông báo KHÔNG mâu thuẫn nhau (mọi giá trị khác None phải bằng nhau)
+    notes: list[str] = []
+
+    def agree(getter, label):
+        vals = [v for v in (getter(m) for m in members) if v not in (None, "")]
+        uniq = list(dict.fromkeys(vals))
+        if len(uniq) > 1:
+            notes.append(f"Các thông báo ghi {label} khác nhau – để trống")
+            return None
+        return uniq[0] if uniq else None
+
+    prop.province = agree(lambda m: m.province, "tỉnh/thành")
+    prop.ward = agree(lambda m: m.info.ward, "xã/phường")
+    prop.address = next((m.address for m in sorted(members, key=lambda x: x.auction_date or datetime.min,
+                                                   reverse=True) if m.address), None)
+    for f, lbl in (("land_area", "tổng diện tích"), ("residential_area", "diện tích đất ở"),
+                   ("other_land_area", "diện tích đất khác"), ("floor_area", "diện tích sàn"),
+                   ("width", "chiều ngang"), ("length", "chiều dài")):
+        setattr(prop, f, agree(lambda m, f=f: getattr(m.info, f), lbl))
+    prop.map_sheet = agree(lambda m: m.info.map_sheet, "số tờ")
+    prop.parcel_no = agree(lambda m: m.info.parcel_no, "số thửa")
     parcels = []
     for m in members:
-        for p in m.info.parcels:
-            if list(p) not in parcels:
-                parcels.append(list(p))
+        for p_ in m.info.parcels:
+            if list(p_) not in parcels:
+                parcels.append(list(p_))
     prop.parcels = parcels[:30]
-    primary = next((m.info.parcels[0] for m in sorted(members, key=lambda x: x.source != "dgts")
-                    if m.info.parcels), None)
-    prop.map_sheet, prop.parcel_no = (primary[0], primary[1]) if primary else (None, None)
+    for m in members:
+        notes += m.info.notes
+    if any((m.property_count or 1) > 1 for m in members):
+        notes.append("Thông báo gồm nhiều tài sản, mỗi tài sản một giá – giá để trống (xem bảng tài sản), nhập tay nếu cần")
+    if not prop.province:
+        notes.append("Tin không ghi rõ tỉnh/thành nơi có tài sản")
+    prop.auto_notes = list(dict.fromkeys(notes))[:12]
     prop.session_count = len(sessions)
-    prop.price_first = priced[0][1] if priced else None
-    prop.price_latest = priced[-1][1] if priced else None
-    prop.deposit_latest = priced[-1][2] if priced else None
-    prop.discount_pct = (round((prop.price_first - prop.price_latest) / prop.price_first * 100, 1)
-                         if priced and len(priced) > 1 and prop.price_first else None)
+    prop.price_first = priced[0][1] if priced and priced[0][0] is sessions[0] else None
+    prop.price_latest = priced[-1][1] if priced and priced[-1][0] is latest_g else None
+    prop.deposit_latest = priced[-1][2] if priced and priced[-1][0] is latest_g else None
+    if priced and priced[-1][0] is not latest_g:
+        notes_ = list(prop.auto_notes or [])
+        notes_.append("Phiên gần nhất chưa có giá – giá hiện tại để trống")
+        prop.auto_notes = notes_
     # cảnh báo gom phiên bất thường: giá phiên sau cao hơn phiên trước >5%, hoặc tổng giảm > 70%
     warn = None
     ps = [x[1] for x in priced]
     if any(b > a * 1.05 for a, b in zip(ps, ps[1:])):
         warn = "Giá phiên sau cao hơn phiên trước – có thể đã gộp nhầm tài sản khác"
-    elif prop.discount_pct and prop.discount_pct > 70:
+    elif len(ps) > 1 and ps[0] and (ps[0] - ps[-1]) / ps[0] > 0.7:
         warn = "Giảm hơn 70% so với phiên 1 – kiểm tra lại các phiên đã gộp"
     prop.link_warning = warn
+    prop.recompute_discount()
     prop.auction_date = max((m.auction_date for m in latest_g if m.auction_date), default=None)
     prop.registration_end = max((m.registration_end for m in latest_g if m.registration_end), default=None)
     prop.publish_date = max((m.publish_date for m in members if m.publish_date), default=None)

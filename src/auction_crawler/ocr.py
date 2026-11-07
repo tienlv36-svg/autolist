@@ -53,7 +53,9 @@ def pdf_text(path: Path, max_pages: int = 3, dpi: int = 200) -> tuple[str, str]:
     return "\n".join(out), "ocr"
 
 
-def extract_prices(text: str) -> dict[str, int]:
+def extract_prices(text: str, heuristic: bool = False) -> dict[str, int]:
+    """heuristic=False (mặc định): chỉ nhận số tiền có NHÃN đọc được ngay trước ("giá khởi điểm",
+    "tiền đặt trước", "/hồ sơ"). heuristic=True: thêm suy luận số lớn nhất = giá khởi điểm (không khuyến nghị)."""
     norm = strip_accents(text)
     cands = []  # (pos, value, context_before, context_after)
     for m in AMOUNT_RE.finditer(norm):
@@ -75,6 +77,8 @@ def extract_prices(text: str) -> dict[str, int]:
             out.setdefault("deposit", v)
         else:
             rest.append(v)
+    if not heuristic:
+        return out
     if "starting_price" not in out:
         pool = [v for v in rest if v != out.get("deposit")]
         if pool:

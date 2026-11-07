@@ -1,28 +1,35 @@
-"""Trích xuất thuộc tính bất động sản từ văn bản tin đấu giá (tiếng Việt, không chuẩn hoá).
+"""Trích xuất thuộc tính bất động sản từ văn bản tin đấu giá - CHẾ ĐỘ THẬN TRỌNG.
 
-Đã khảo sát trên ~1.000 tin thật. Các mẫu điển hình:
-  "thửa đất số: 30; tờ bản đồ số: 59; diện tích: 130 m² đất tại đô thị"
-  "Diện tích: 3.198,1m2; Loại đất: Đất chuyên trồng lúa nước"
-  "diện tích 210,6 m2 đất (trong đó 150 m2 đất ở nông thôn, 60,6 m2 đất trồng cây lâu năm)"
-  "Diện tích xây dựng: 206,1m2; Diện tích sàn: 439,5m2"
-  "mặt tiền rộng 12,7m, ... chiều sâu bình quân 36,7m" | "kích thước 10,1m x 5,1m"
-  "... tỉnh Bình Dương (nay là phường Chánh Hiệp, Tp. Hồ Chí Minh)"
-Kết quả là ƯỚC LƯỢNG tự động - giao diện cho phép sửa tay (trường *_manual ưu tiên hơn).
+Nguyên tắc: chỉ tự điền khi thông tin được GHI RÕ trong tin, có NHÃN rõ ràng và CHỈ CÓ MỘT giá trị.
+Không suy luận, không cộng dồn, không lấy hiệu số. Có nhiều thửa / nhiều giá trị khác nhau / mâu thuẫn
+-> để trống và ghi lý do vào `notes` để người dùng nhập tay.
+
+Ví dụ ĐIỀN:  "thửa đất số 30, tờ bản đồ số 59, diện tích: 130 m2"          -> tờ 59, thửa 30, 130 m2
+             "Diện tích: 319,5m2 (Trong đó có 100m2 đất ở ... và 219,5m2 đất trồng cây lâu năm)"
+                                                                         -> tổng 319,5; đất ở 100; khác 219,5
+             "Diện tích xây dựng: 206,1m2; Diện tích sàn: 439,5m2"        -> sàn 439,5
+             "... tỉnh Bình Dương (nay là phường Chánh Hiệp, Tp. Hồ Chí Minh)" -> Phường Chánh Hiệp, TP.HCM
+Ví dụ ĐỂ TRỐNG:
+             "diện tích 80,0 m2 (Theo sơ đồ đo đạc diện tích còn 76,4 m2)"  -> 2 giá trị khác nhau
+             "thửa 589 ... thửa 593 ..." (nhiều thửa)                     -> diện tích, tờ/thửa
+             "diện tích 162m2, mục đích sử dụng: Đất ở" (không có số đi kèm loại đất) -> đất ở trống
+             "kích thước 10,1m x 5,1m" (không rõ chiều nào là ngang)       -> ngang/dài trống
 """
 from __future__ import annotations
 
 import re
 from dataclasses import asdict, dataclass, field
 
-from ..normalize import strip_accents
+from ..normalize import PROVINCE_MERGE, strip_accents
 
 NUM = r"\d{1,3}(?:\.\d{3})+(?:,\d+)?|\d+(?:[.,]\d+)?"
-AREA_RE = re.compile(rf"({NUM})\s*(?:m2|m²|m\s*2\b|mét vuông|met vuong)", re.I)
-RESIDENTIAL = re.compile(r"dat o\b|\bodt\b|\bont\b|dat o tai (do thi|nong thon)|dat o do thi|dat o nong thon|\bo dt\b|"
-                         r"dat tai (do thi|nong thon)")
-OTHER_LAND = re.compile(r"\b(cln|luc|bhk|lua|nts|hnk|skc|tmd|rsx|nkh|lnk|ctd)\b|trong (cay|lua)|cay lau nam|"
-                        r"cay hang nam|nong nghiep|nuoi trong|thuy san|san xuat kinh doanh|thuong mai|"
-                        r"rung san xuat|mat nuoc|giao thong|thuy loi|chuyen dung|phi nong nghiep")
+M2 = r"\s*(?:m2|m²|m\s*2\b|mét vuông|met vuong)"
+RESIDENTIAL = re.compile(r"\bdat o\b|\bodt\b|\bont\b|\bo dt\b")
+OTHER_LAND = re.compile(r"\b(cln|luc|bhk|lua|nts|hnk|skc|tmd|rsx|lnk|ctd|nhk|dgt|tsn)\b|trong (cay|lua)|cay lau nam|"
+                        r"cay hang nam|nong nghiep|nuoi trong|thuy san|san xuat kinh doanh|thuong mai|dich vu|"
+                        r"rung san xuat|mat nuoc|giao thong|thuy loi|chuyen dung|phi nong nghiep|chuyen trong")
+MULTI_RE = re.compile(r"\bcac (lo|thua|o dat|can|nen)\b|\b\d+\s*(lo|thua|o dat|can ho|can nha|nen)\b|tron goi|"
+                      r"\btai san (so )?\d+\s*:|\blo (so )?\d+\s*:|\(lo \d+\)")
 WARD_RE = re.compile(r"\b(xã|phường|thị trấn|đặc khu|p\.|x\.|tt\.)\s*([^\W\d_][^,;()\n]{1,40}?|\d{1,2})"
                      r"(?=\s*(?:,|;|\)|\.\s|$|-|–|\btỉnh\b|\bthành phố\b|\btp\b|\bhuyện\b|\bquận\b|\bthị xã\b))",
                      re.I)
@@ -35,7 +42,7 @@ def parse_number(s: str) -> float | None:
     if "," in s:
         s = s.replace(".", "").replace(",", ".")
     elif s.count(".") == 1 and len(s.split(".")[1]) != 3:
-        pass  # dấu chấm thập phân
+        pass
     else:
         s = s.replace(".", "")
     try:
@@ -44,127 +51,79 @@ def parse_number(s: str) -> float | None:
         return None
 
 
+def _one(values: list[float], tol: float = 0.05) -> float | None:
+    """Trả giá trị nếu mọi giá trị trùng nhau (cùng một số được nhắc lại), ngược lại None."""
+    if not values:
+        return None
+    return round(values[0], 2) if all(abs(v - values[0]) <= tol for v in values) else None
+
+
 @dataclass
 class RealEstateInfo:
     sale_form: str = "ban"                 # ban | cho_thue | khoan_no
-    land_area: float | None = None         # tổng diện tích đất (m2)
-    residential_area: float | None = None  # diện tích đất ở
-    other_land_area: float | None = None   # diện tích đất khác
-    floor_area: float | None = None        # diện tích sàn
-    width: float | None = None             # chiều ngang / mặt tiền (m)
-    length: float | None = None            # chiều dài / chiều sâu (m)
-    parcels: list[tuple[str | None, str | None]] = field(default_factory=list)  # [(tờ, thửa)]
+    land_area: float | None = None
+    residential_area: float | None = None
+    other_land_area: float | None = None
+    floor_area: float | None = None
+    width: float | None = None
+    length: float | None = None
+    parcels: list[tuple[str | None, str | None]] = field(default_factory=list)  # mọi (tờ, thửa) nhắc trong tin
+    map_sheet: str | None = None           # chỉ khi xác định được DUY NHẤT một cặp tờ/thửa
+    parcel_no: str | None = None
     ward: str | None = None
-    session_hint: int | None = None        # "lần 3" trong tiêu đề
+    province: str | None = None
+    province_raw: str | None = None
+    multi: bool = False                    # tin gồm nhiều thửa/lô
+    session_hint: int | None = None
     has_house: bool = False
+    notes: list[str] = field(default_factory=list)   # lý do để trống
 
     def dict(self) -> dict:
         d = asdict(self)
         d["parcels"] = [list(p) for p in self.parcels]
         return d
 
-    @property
-    def parcel_text(self) -> str | None:
-        if not self.parcels:
-            return None
-        to, thua = self.parcels[0]
-        s = " · ".join(x for x in [f"Tờ {to}" if to else None, f"Thửa {thua}" if thua else None] if x)
-        return s + (f" (+{len(self.parcels) - 1})" if len(self.parcels) > 1 else "")
-
 
 def detect_sale_form(title: str, asset_type: str | None) -> str:
     n = strip_accents(title or "")
     if asset_type == "khoan_no" or re.search(r"khoan no|quyen (thu hoi|doi) no|hop dong tin dung", n):
         return "khoan_no"
-    if re.search(r"\bcho thue\b|quyen (khai thac|thue)|thue mat bang|\bthoi gian (cho )?thue\b|\bthue\b.*\bthang\b", n):
+    if re.search(r"\bcho thue\b|quyen (khai thac|thue)|thue mat bang|\bthoi gian (cho )?thue\b", n):
         return "cho_thue"
     return "ban"
 
 
-def _areas(text: str, norm: str) -> dict:
-    land, resid, other, floor, generic = [], [], [], [], []
-    in_breakdown_until = -1
-    for m in AREA_RE.finditer(text):
-        v = parse_number(m.group(1))
-        if not v or v <= 0 or v > 50_000_000:
+# ------------------------------------------------------------------ tờ / thửa
+def _parcel_tokens(norm: str) -> list[tuple[str, int, str]]:
+    """Token (loại, vị trí, số). Bỏ qua thửa nhắc trong mô tả ranh giới ('giáp thửa 620');
+    số trong '(nay là tờ bản đồ số 52)' là SỐ MỚI của cùng thửa -> thay cho số cũ, không tính thêm thửa."""
+    nay_spans = [(m.start(), m.end()) for m in re.finditer(r"\(\s*nay(?: la)?\b[^)]*\)", norm)]
+    toks: list[tuple[str, int, str]] = []
+    pats = (("thua", r"\bthua(?:\s+dat)?(?:\s+so)?(?:\s+tach)?\s*:?\s*(\d{1,6}[a-z]?)(?:\(\d+\))?"),
+            ("to", r"\b(?:to ban do|tbd|to bd)(?:\s+so)?\s*:?\s*(\d{1,4}[a-z]?)(?:\(\d+\))?"))
+    for kind, pat in pats:
+        for m in re.finditer(pat, norm):
+            if re.search(r"(giap|tiep giap|ke ben|canh|lien ke|giap voi)\W*(voi\W*)?$", norm[max(0, m.start() - 20):m.start()]):
+                continue
+            toks.append((kind, m.start(), m.group(1)))
+    toks.sort(key=lambda t: t[1])
+    out: list[tuple[str, int, str]] = []
+    for kind, pos, val in toks:
+        if any(a <= pos < b for a, b in nay_spans):
+            for j in range(len(out) - 1, -1, -1):          # thay số cũ cùng loại ngay trước đó
+                if out[j][0] == kind:
+                    out[j] = (kind, out[j][1], val)
+                    break
             continue
-        # norm có cùng độ dài với text (strip_accents giữ độ dài với chữ tiếng Việt NFC)
-        before = norm[max(0, m.start() - 70):m.start()]
-        after = re.split(r"[(;]|trong do", norm[m.end():m.end() + 45])[0]  # ngữ cảnh sau, dừng ở '(' / 'trong đó'
-        near_b = before[-40:]
-        if re.search(r"(dien tich|dt)\s*san|tong dien tich san|san xay dung", near_b):
-            floor.append(v)
-            continue
-        if re.search(r"(dien tich|dt)\s*xay dung|xay dung\s*:?\s*$|dien tich (nha|xay)|nha .{0,25}dien tich", near_b):
-            continue  # diện tích xây dựng/nhà - không phải đất, không phải sàn
-        if re.search(r"trong do|gom\s*:?\s*$", before[-25:]) or m.start() <= in_breakdown_until:
-            in_breakdown_until = m.end() + 80
-            target = resid if RESIDENTIAL.search(after[:35]) else other if OTHER_LAND.search(after[:40]) else None
-            if target is not None:
-                target.append(v)
-            continue
-        # loại đất có thể đứng SAU số ("130 m2 đất ở") hoặc TRƯỚC số trong cùng vế ("đất ở tại nông thôn 100m2")
-        before_seg = re.split(r";|,(?!\d)|m2|m²|\.\s", before)[-1]
-        after_seg = re.split(r"\.\s|:|,(?!\d)", after[:35])[0]
-        typed_after = None
-        if re.match(r"\s*(dat\b|\(?\s*[a-z]{3}\s*\)?(\W|$))", after_seg):   # ngay sau số: "130 m2 đất ở", "60 m2 (LUC)"
-            typed_after = RESIDENTIAL.search(after_seg) and "r" or OTHER_LAND.search(after_seg) and "o"
-        typed_before = RESIDENTIAL.search(before_seg) and "r" or OTHER_LAND.search(before_seg) and "o"
-        if typed_before and re.search(r"dien tich|\bdt\b|tong", before_seg):
-            typed_before = None                       # "đất ở ... diện tích 120m2" -> là tổng của thửa
-        typed = typed_after or typed_before
-        if typed == "r":
-            resid.append(v)
-            land.append(v)
-        elif typed == "o":
-            other.append(v)
-            land.append(v)
-        elif re.search(r"dien tich|\bdt\b|dien tich (thuc te|thuc do|do dac|ke bien)|quyen su dung|thua|lo dat|o dat|\bdat\b",
-                       before[-45:] + after[:20]):
-            generic.append(v)
-    # chỉ có 1 diện tích tổng + mục đích sử dụng duy nhất ("mục đích sử dụng đất: Đất ở tại đô thị",
-    # "Quyền sử dụng đất HNK diện tích ...") -> toàn bộ thuộc loại đó
-    if generic and not land and not resid and not other:
-        purpose = re.search(r"muc dich (su dung )?(dat)?\s*:?\s*([^;.]{0,60})", norm)
-        seg = purpose.group(3) if purpose else ""
-        if not seg and (m0 := re.search(r"quyen su dung dat\s+([a-z]{3})\b\s*(dien tich|dt)", norm)):
-            seg = m0.group(1)
-        if seg and not re.search(r"\d", seg[:40]):
-            if RESIDENTIAL.search(seg) and not OTHER_LAND.search(seg):
-                resid.append(generic[0])
-            elif OTHER_LAND.search(seg) and not RESIDENTIAL.search(seg):
-                other.append(generic[0])
-    out: dict = {}
-    # tổng diện tích đất: các diện tích có gắn loại đất + diện tích chung đầu tiên của mỗi thửa
-    total = sum(land) if land else (generic[0] if generic else None)
-    if generic and land and generic[0] > total:
-        total = generic[0]
-    if total and resid + other and sum(resid) + sum(other) > total + 0.5:
-        total = sum(resid) + sum(other)               # nhiều thửa: tổng không nhỏ hơn tổng các phần
-    if total:
-        out["land_area"] = round(total, 2)
-    if resid:
-        out["residential_area"] = round(sum(resid), 2)
-    if other:
-        out["other_land_area"] = round(sum(other), 2)
-    elif resid and total and total > sum(resid) + 0.5:
-        out["other_land_area"] = round(total - sum(resid), 2)
-    if floor:
-        out["floor_area"] = round(max(floor) if len(set(floor)) == 1 else sum(floor), 2)
+        out.append((kind, pos, val))
     return out
 
 
 def _parcels(norm: str) -> list[tuple[str | None, str | None]]:
-    """Ghép (tờ, thửa) theo thứ tự xuất hiện; hỗ trợ 'thửa ... tờ ...' và 'tờ ... thửa ...'."""
-    toks = []
-    for m in re.finditer(r"\bthua(?:\s+dat)?(?:\s+so)?\s*:?\s*(\d{1,6}[a-z]?(?:\(\d+\))?)", norm):
-        toks.append(("thua", m.start(), re.sub(r"\(.*", "", m.group(1))))
-    for m in re.finditer(r"\b(?:to ban do|tbd|to bd|to)(?:\s+so)?\s*:?\s*(\d{1,4}[a-z]?(?:\(\d+\))?)", norm):
-        toks.append(("to", m.start(), re.sub(r"\(.*", "", m.group(1))))
-    toks.sort(key=lambda t: t[1])
+    """Mọi cặp (tờ, thửa) theo thứ tự xuất hiện - để HIỂN THỊ tham khảo."""
     pairs: list[tuple[str | None, str | None]] = []
-    cur: dict[str, str | None] = {}
-    for kind, _, val in toks:
+    cur: dict[str, str] = {}
+    for kind, _, val in _parcel_tokens(norm):
         if kind in cur:
             pairs.append((cur.get("to"), cur.get("thua")))
             cur = {}
@@ -172,65 +131,207 @@ def _parcels(norm: str) -> list[tuple[str | None, str | None]]:
         if "to" in cur and "thua" in cur:
             pairs.append((cur["to"], cur["thua"]))
             cur = {}
-    if cur.get("thua") or cur.get("to"):
+    if cur:
         pairs.append((cur.get("to"), cur.get("thua")))
-    seen, out = set(), []
+    out = []
     for p in pairs:
-        if p not in seen:
-            seen.add(p)
+        if p not in out:
             out.append(p)
     return out[:30]
 
 
-def _dimensions(norm: str) -> tuple[float | None, float | None]:
-    w = l = None
-    if m := re.search(rf"(?:chieu ngang|ngang|mat tien(?: rong)?|chieu rong)\s*:?\s*(?:khoang\s*)?({NUM})\s*m\b", norm):
-        w = parse_number(m.group(1))
-    if m := re.search(rf"(?:chieu dai|chieu sau|dai)(?: binh quan)?\s*:?\s*(?:khoang\s*)?({NUM})\s*m\b", norm):
-        l = parse_number(m.group(1))
-    if (w is None or l is None) and (m := re.search(rf"kich thuoc\s*:?\s*\(?\s*({NUM})\s*m?\s*x\s*({NUM})\s*m", norm)):
-        a, b = parse_number(m.group(1)), parse_number(m.group(2))
-        if a and b:
-            w, l = w or min(a, b), l or max(a, b)
-    return w, l
-
-
-def detect_ward(*texts: str | None) -> str | None:
-    """Xã/phường nơi có tài sản; ưu tiên tên hiện hành trong '(nay là ...)'."""
-    for t in texts:
-        if not t:
+# ------------------------------------------------------------------ diện tích
+def _areas(text: str, norm: str, info: RealEstateInfo) -> None:
+    labeled, resid, other, floor = [], [], [], []
+    for m in re.finditer(rf"({NUM}){M2}", norm):
+        v = parse_number(m.group(1))
+        if not v or v <= 0 or v > 50_000_000:
             continue
-        for seg in re.findall(r"\(\s*nay l[àa]\s*:?\s*([^)]+)\)", t, re.I) or []:
-            if w := _last_ward(seg):
-                return w
-        if w := _last_ward(t[:600]):
-            return w
-    return None
+        before = norm[max(0, m.start() - 70):m.start()]
+        after = norm[m.end():m.end() + 45]
+        clause_b = re.split(r";|,(?!\d)|\.\s|m2|m²", before)[-1]            # vế câu ngay trước số
+        clause_a = re.split(r"[;(]|,(?!\d)|\.\s|trong do", after)[0]       # vế câu ngay sau số
+        if re.search(r"(dien tich|dt)\s*san|tong dien tich san|san xay dung", clause_b):
+            floor.append((v, "tong" in clause_b))
+            continue
+        if re.search(r"xay dung|\bnha\b|cong trinh|phong|tang|mai|kiot|ki ot", clause_b):
+            continue                                                        # diện tích nhà/công trình
+        # loại đất GẮN TRỰC TIẾP với số: "100 m2 đất ở", "60 m2 (LUC)", "đất ở tại nông thôn 100m2", "(ODT) 36m2"
+        typed = None
+        a = after.lstrip()
+        if mc := re.match(r"\(\s*([a-z]{3})\s*\)", a):
+            seg = mc.group(1)
+        elif a.startswith("dat"):
+            seg = re.split(r"[;(]|trong do|,(?!\d)|\.\s", a)[0][:35]
+        else:
+            seg = ""
+        if seg:
+            typed = "r" if RESIDENTIAL.search(seg) else "o" if OTHER_LAND.search(seg) else None
+        if typed is None and re.search(r"(dien tich|\bdt\b)\s*(dat\s*)?(o\b|odt|ont)[^0-9]{0,15}$", clause_b):
+            typed = "r"                                                     # "Diện tích đất ở: 100m2"
+        elif typed is None and not re.search(r"dien tich|\bdt\b|tong", clause_b):
+            typed = "r" if RESIDENTIAL.search(clause_b) else "o" if OTHER_LAND.search(clause_b) else None
+        is_labeled = bool(re.search(r"(dien tich|\bdt\b)[^0-9]{0,40}$|quyen su dung\s*$", clause_b)) and \
+            not re.search(r"(dien tich|\bdt\b)\s*(dat\s*)?(o\b|odt|ont)", clause_b)
+        if is_labeled:
+            labeled.append(v)          # "Diện tích: 130 m2" ; "diện tích 120,5m2 đất ở" (vừa là tổng, vừa là đất ở)
+        if typed == "r":
+            resid.append(v)
+        elif typed == "o":
+            other.append(v)
+
+    if info.multi:
+        if labeled or resid or other:
+            info.notes.append("Tin gồm nhiều thửa/lô – diện tích để trống, nhập tay theo từng tài sản")
+    else:
+        total = _one(labeled)
+        if labeled and total is None:
+            info.notes.append("Tin ghi nhiều diện tích khác nhau (vd theo sổ và theo đo đạc) – tổng diện tích để trống")
+        r = _one(resid) if resid else None
+        o = round(sum(other), 2) if other else None
+        if total and (r or 0) + (o or 0) > total + 0.5:
+            info.notes.append("Diện tích đất ở/đất khác không khớp tổng – để trống")
+            r = o = None
+        elif other and len(other) > 1 and not (total and abs((r or 0) + o - total) <= 0.5):
+            o = None                                                        # chỉ cộng các phần khi khớp đúng tổng
+        if resid and _one(resid) is None:
+            info.notes.append("Có nhiều số liệu đất ở khác nhau – để trống")
+        info.land_area, info.residential_area, info.other_land_area = total, r, o
+        if total is None and not labeled and (r or o):
+            info.notes.append("Tin không ghi tổng diện tích")
+    # diện tích sàn: ưu tiên "tổng diện tích sàn"; nhiều giá trị khác nhau -> trống
+    tot_floor = [v for v, is_total in floor if is_total]
+    fl = _one(tot_floor) if tot_floor else _one([v for v, _ in floor])
+    if floor and fl is None:
+        info.notes.append("Có nhiều công trình/diện tích sàn khác nhau – diện tích sàn để trống")
+    info.floor_area = fl
 
 
-def _last_ward(t: str) -> str | None:
-    hits = list(WARD_RE.finditer(t))
-    if not hits:
-        return None
-    # địa chỉ viết nhỏ -> lớn: lấy xã/phường đầu tiên đứng sau 'tọa lạc|tại|địa chỉ' nếu có, không thì cái đầu
-    m = hits[0]
-    kind = m.group(1).lower()
-    kind = WARD_PREFIX.get(kind, kind.capitalize())
-    name = re.sub(r"\s+", " ", m.group(2)).strip(" .-")
+def _dimensions(norm: str, info: RealEstateInfo) -> None:
+    def collect(label_re: str) -> list[float]:
+        vals = []
+        for m in re.finditer(rf"({label_re})\s*:?\s*(?:khoang\s*)?({NUM})\s*m\b", norm):
+            ctx = norm[max(0, m.start() - 50):m.start()]
+            if re.search(r"phia|giap|canh|mong|tuong|nha|xay|phong|mai|ket cau|cong|rao", ctx):
+                continue                                                    # cạnh thửa / kích thước công trình
+            if (v := parse_number(m.group(2))) is not None:
+                vals.append(v)
+        return vals
+    w = collect(r"chieu ngang|mat tien(?: rong)?|chieu rong mat tien")
+    l = collect(r"chieu dai|chieu sau(?: binh quan)?")
+    info.width, info.length = _one(w), _one(l)
+    if (w and info.width is None) or (l and info.length is None):
+        info.notes.append("Có nhiều số đo chiều ngang/dài khác nhau – để trống")
+
+
+# ------------------------------------------------------------------ vị trí
+def _norm_ward(kind: str, name: str) -> str:
+    kind = WARD_PREFIX.get(kind.lower(), kind.lower().capitalize())
+    name = re.sub(r"\s+", " ", name).strip(" .-")
     name = " ".join(w if w.isupper() and len(w) <= 3 else w[:1].upper() + w[1:] for w in name.split())
     return f"{kind} {name}"
 
 
+def _wards(t: str) -> list[str]:
+    return list(dict.fromkeys(_norm_ward(m.group(1), m.group(2)) for m in WARD_RE.finditer(t)))
+
+
+def detect_ward(*texts: str | None) -> str | None:
+    """Xã/phường nơi có tài sản: tên trong '(nay là ...)' nếu có; nếu không, chỉ khi văn bản nhắc
+    DUY NHẤT một xã/phường. Nhiều xã/phường khác nhau -> None."""
+    for t in texts:
+        if not t:
+            continue
+        current = []
+        for seg in re.findall(r"\(\s*nay l[àa]\s*:?\s*([^)]+)\)", t, re.I):
+            current += _wards(seg)
+        current = list(dict.fromkeys(current))
+        if current:
+            return current[0] if len(current) == 1 else None
+        found = _wards(t)
+        if found:
+            return found[0] if len(found) == 1 else None
+    return None
+
+
+def _province_keys() -> list[tuple[str, str, str]]:
+    keys = []
+    for new, olds in PROVINCE_MERGE.items():
+        for n in [new, *olds]:
+            k = re.sub(r"\s+", " ", strip_accents(n).replace("-", " ").replace(".", " ")).strip()
+            keys.append((k, new, n))
+    keys.append(("ho chi minh", "TP. Hồ Chí Minh", "Hồ Chí Minh"))
+    keys.append(("tp hcm", "TP. Hồ Chí Minh", "Hồ Chí Minh"))
+    return sorted(keys, key=lambda x: -len(x[0]))
+
+
+_PKEYS = _province_keys()
+
+
+def _provinces_in(t: str) -> list[tuple[str, str]]:
+    norm = " " + re.sub(r"[\s,.\-;:()]+", " ", strip_accents(t)) + " "
+    taken: list[tuple[int, int]] = []
+    found: list[tuple[int, str, str]] = []
+    for key, new, orig in _PKEYS:
+        for m in re.finditer(rf"(?<=\s){re.escape(key)}(?=\s)", norm):
+            if any(a <= m.start() < b for a, b in taken):
+                continue
+            taken.append((m.start(), m.end()))
+            found.append((m.start(), new, orig))
+    return [(n, o) for _, n, o in sorted(found)]
+
+
+def detect_province_strict(*texts: str | None) -> tuple[str | None, str | None]:
+    """Tỉnh nơi có tài sản: chỉ từ văn bản mô tả/địa chỉ tài sản (không lấy từ tên chủ tài sản).
+    Ưu tiên '(nay là ...)'. Tên tỉnh cũ được quy đổi theo Nghị quyết sáp nhập 2025 (quy đổi pháp lý, không đoán).
+    Văn bản nhắc nhiều tỉnh (sau quy đổi) khác nhau -> None."""
+    for t in texts:
+        if not t:
+            continue
+        cur = []
+        for seg in re.findall(r"\(\s*nay l[àa]\s*:?\s*([^)]+)\)", t, re.I):
+            cur += _provinces_in(seg)
+        found = cur or _provinces_in(t)
+        if not found:
+            continue
+        news = {n for n, _ in found}
+        if len(news) == 1:
+            return found[-1]
+        return None, None
+    return None, None
+
+
+# ------------------------------------------------------------------ tổng hợp
 def extract(title: str, asset_name: str | None = None, address: str | None = None,
             asset_type: str | None = None, extra: list[str] | None = None) -> RealEstateInfo:
-    text = " \n".join(x for x in [asset_name or title, *(extra or [])] if x)
+    # bảng tài sản của nguồn thường lặp lại nguyên văn mô tả -> bỏ đoạn trùng để không đếm số liệu 2 lần
+    parts: list[str] = []
+    for x in [asset_name or title, *(extra or [])]:
+        if not x:
+            continue
+        nx = re.sub(r"\W+", " ", strip_accents(x)).strip()
+        if any(nx[:300] in re.sub(r"\W+", " ", strip_accents(p_)) for p_ in parts):
+            continue
+        parts.append(x)
+    text = " \n".join(parts)
     norm = strip_accents(text)
     info = RealEstateInfo(sale_form=detect_sale_form(f"{title} {asset_name or ''}", asset_type))
-    for k, v in _areas(text, norm).items():
-        setattr(info, k, v)
     info.parcels = _parcels(norm)
-    info.width, info.length = _dimensions(norm)
+    thua = {p[1] for p in info.parcels if p[1]}
+    to = {p[0] for p in info.parcels if p[0]}
+    info.multi = len(thua) > 1 or bool(MULTI_RE.search(strip_accents(f"{title} {asset_name or ''}")))
+    # tờ/thửa: chỉ khi đúng MỘT thửa và MỘT tờ
+    if not info.multi and len(thua) == 1 and len(to) == 1:
+        info.map_sheet, info.parcel_no = next(iter(to)), next(iter(thua))
+    elif len(thua) > 1 or len(to) > 1:
+        info.notes.append("Tin nhắc nhiều tờ/thửa – số tờ, số thửa để trống")
+    _areas(text, norm, info)
+    _dimensions(norm, info)
     info.ward = detect_ward(address, asset_name, title)
+    if info.ward is None and (address or asset_name):
+        if _wards(address or "") or _wards(asset_name or title or ""):
+            info.notes.append("Tin nhắc nhiều xã/phường – để trống")
+    info.province, info.province_raw = detect_province_strict(address, asset_name, title)
     if m := re.search(r"\blan\s*(?:thu\s*)?(\d{1,2})\b", strip_accents(title or "")):
         info.session_hint = int(m.group(1))
     info.has_house = bool(re.search(r"\bnha o\b|can ho|nha xay|tai san gan lien|cong trinh xay dung|biet thu|nha \d+ tang", norm))

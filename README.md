@@ -1,7 +1,8 @@
 # auction-crawler
 
 > 📘 **Hướng dẫn chi tiết từng bước** (cài máy chủ, chạy tự động, HTTPS, sao lưu, hướng dẫn sử dụng cho nhân viên):
-> [docs/HUONG_DAN.md](docs/HUONG_DAN.md). File triển khai mẫu nằm trong [deploy/](deploy/).
+> [docs/HUONG_DAN.md](docs/HUONG_DAN.md). **Cài trên VPS (chưa có tên miền):** [docs/HUONG_DAN_VPS.md](docs/HUONG_DAN_VPS.md)
+> – script cài tự động `deploy/install-vps.sh`, lấy dữ liệu lần đầu `deploy/first-load.sh`.
 
 Thu thập, phân loại và thống kê tin đăng đấu giá tài sản từ 2 nguồn (cấu trúc đã kiểm chứng 07/11/2026):
 

@@ -129,3 +129,20 @@ def test_csrf_and_admin(env):
     tok = csrf(c, "/admin/users")
     c.post("/admin/users", data={"csrf": tok, "username": "nv2", "full_name": "NV 2", "password": "12345678"})
     assert "@nv2" in c.get("/admin/users").text
+
+
+def test_manual_price_and_province(env):
+    repo, c = env
+    login(c)
+    with repo.session() as s:
+        pid = s.query(Property).filter(Property.session_count == 2).one().id
+    url = f"/p/{pid}"
+    tok = csrf(c, url)
+    c.post(f"{url}/fields", data={"csrf": tok, "price_latest": "700 triệu", "province": "Vĩnh Long"})
+    with repo.session() as s:
+        p = s.get(Property, pid)
+        assert p.price_latest_manual == 700_000_000 and p.discount_pct == 30.0 and p.eff("province") == "Vĩnh Long"
+    assert "1</strong> tài sản" in c.get("/?province=Vĩnh Long&price_max=0,7").text
+    c.post(f"{url}/fields", data={"csrf": tok, "price_first": "1.200.000.000"})
+    with repo.session() as s:
+        assert s.get(Property, pid).discount_pct == 41.7

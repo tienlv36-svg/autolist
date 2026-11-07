@@ -22,11 +22,13 @@ CATEGORIES = {"dat": "Đất", "nha_dat": "Nhà + đất", "mat_bang": "Mặt b�
 TASK_STATUS = {"moi": "Mới", "dang_lam": "Đang làm", "xong": "Hoàn thành", "huy": "Huỷ"}
 # trường có thể sửa tay: tên -> nhãn
 EDITABLE = {
+    "price_latest": "Giá hiện tại (đ)", "price_first": "Giá phiên 1 (đ)",
     "land_area": "Tổng diện tích đất (m²)", "residential_area": "Diện tích đất ở (m²)",
     "other_land_area": "Diện tích đất khác (m²)", "floor_area": "Diện tích sàn (m²)",
     "width": "Chiều ngang (m)", "length": "Chiều dài (m)", "map_sheet": "Số tờ", "parcel_no": "Số thửa",
-    "ward": "Xã/phường", "address": "Địa chỉ tài sản",
+    "ward": "Xã/phường", "province": "Tỉnh/thành phố", "address": "Địa chỉ tài sản",
 }
+MONEY_FIELDS = {"price_latest", "price_first"}
 
 
 class User(Base):
@@ -64,6 +66,10 @@ class Property(Base):
     parcel_no: Mapped[str | None] = mapped_column(String(64))
     parcels: Mapped[list[Any]] = mapped_column(JSON, default=list)
     ward_manual: Mapped[str | None] = mapped_column(String(128))
+    province_manual: Mapped[str | None] = mapped_column(String(64))
+    price_first_manual: Mapped[int | None] = mapped_column(BigInteger)
+    price_latest_manual: Mapped[int | None] = mapped_column(BigInteger)
+    auto_notes: Mapped[list[Any]] = mapped_column(JSON, default=list)   # lý do để trống (trích xuất thận trọng)
     address_manual: Mapped[str | None] = mapped_column(Text)
     land_area_manual: Mapped[float | None] = mapped_column(Float)
     residential_area_manual: Mapped[float | None] = mapped_column(Float)
@@ -99,6 +105,15 @@ class Property(Base):
         """Giá trị hiệu lực: nhập tay nếu có, không thì tự động."""
         m = getattr(self, f"{name}_manual", None)
         return m if m not in (None, "") else getattr(self, name)
+
+    def recompute_discount(self) -> None:
+        """% giảm tính từ giá HIỆU LỰC (có tính giá nhập tay); để trống nếu thiếu dữ liệu hoặc có cảnh báo."""
+        first, latest = self.eff("price_first"), self.eff("price_latest")
+        manual = self.price_first_manual or self.price_latest_manual
+        if first and latest and first != latest and (manual or (self.session_count > 1 and not self.link_warning)):
+            self.discount_pct = round((first - latest) / first * 100, 1)
+        else:
+            self.discount_pct = None
 
 
 class PropertyNotice(Base):

@@ -87,7 +87,7 @@
       <h3 title="{{ p.title }}">{{ p.title }}</h3>
       <div class="loc">{{ parcel_or_address(p) }}</div>
       <div class="price">
-        <span class="big">{{ fmt.money(p.price_latest) }}</span>
+        <span class="big">{{ fmt.money(p.eff('price_latest')) if p.eff('price_latest') else 'Chưa có giá' }}</span>
         {% if p.discount_pct %}<span class="disc">−{{ fmt.num(p.discount_pct) }}% so phiên 1</span>{% if p.link_warning %}<span class="badge warn" title="{{ p.link_warning }}">⚠ kiểm tra</span>{% endif %}
         {% elif p.session_count > 1 %}<span class="muted small">{{ p.session_count }} phiên</span>{% endif %}
       </div>

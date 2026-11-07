@@ -16,8 +16,9 @@ Tiẫn đX¿ rước 86.000.000 đồng (Bằng chữ: Tám mươi sáu
 
 
 def test_extract_prices_from_garbled_ocr():
-    assert extract_prices(OCR_SAMPLE) == {"starting_price": 432_000_000, "deposit": 86_000_000,
-                                          "dossier_fee": 100_000}
+    # nhãn "Giá khởi điểm" bị OCR làm méo -> mặc định KHÔNG đoán giá khởi điểm
+    assert extract_prices(OCR_SAMPLE) == {"deposit": 86_000_000, "dossier_fee": 100_000}
+    assert extract_prices(OCR_SAMPLE, heuristic=True)["starting_price"] == 432_000_000
 
 
 def test_extract_prices_labeled():

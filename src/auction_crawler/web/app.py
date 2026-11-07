@@ -17,9 +17,11 @@ from sqlalchemy import func, select
 from starlette.middleware.sessions import SessionMiddleware
 
 from ..config import get_settings
-from ..realestate.db import (CATEGORIES, EDITABLE, OWNER_TYPES, PRIORITIES, SALE_FORMS, TASK_STATUS, Activity,
+from ..realestate.db import (CATEGORIES, EDITABLE, MONEY_FIELDS, OWNER_TYPES, PRIORITIES, SALE_FORMS, TASK_STATUS, Activity,
                              Comment, FileView, Property, PropertyFile, PropertyNotice, Task, User)
 from ..storage import AssetRow, NoticeRow, Repository
+from ..normalize import PROVINCE_MERGE, parse_vnd
+from ..realestate.extract import parse_number
 from . import fmt
 from .auth import LoginRequired, authenticate, check_csrf, csrf_token, current_user, hash_password, load_secret
 from .queries import SORTS, Filters, build_query
@@ -52,7 +54,7 @@ def create_app(repo: Repository | None = None, media_root: Path | None = None,
     tpl = Jinja2Templates(directory=HERE / "templates")
     tpl.env.globals.update(fmt=fmt, PRIORITIES=PRIORITIES, SALE_FORMS=SALE_FORMS, OWNER_TYPES=OWNER_TYPES,
                            CATEGORIES=CATEGORIES, TASK_STATUS=TASK_STATUS, EDITABLE=EDITABLE, SORTS=SORTS,
-                           FOLDERS=FOLDERS)
+                           FOLDERS=FOLDERS, MONEY_FIELDS=MONEY_FIELDS, PROVINCES=sorted(PROVINCE_MERGE))
     app.state.repo = repo
 
     @app.exception_handler(LoginRequired)
@@ -113,8 +115,8 @@ def create_app(repo: Repository | None = None, media_root: Path | None = None,
             q = build_query(f, user.id)
             total = s.scalar(select(func.count()).select_from(q.order_by(None).subquery()))
             items = s.scalars(q.offset((f.page - 1) * PAGE_SIZE).limit(PAGE_SIZE)).all()
-            provinces = [p for p, in s.execute(select(Property.province).where(Property.province.is_not(None))
-                                               .group_by(Property.province).order_by(Property.province))]
+            pv = func.coalesce(Property.province_manual, Property.province)
+            provinces = [p for p, in s.execute(select(pv).where(pv.is_not(None)).group_by(pv).order_by(pv))]
             wards = _wards(s, f.province) if f.province else []
             qs = request.url.query
             base_qs = re.sub(r"(^|&)page=\d+", "", qs).lstrip("&")
@@ -124,7 +126,8 @@ def create_app(repo: Repository | None = None, media_root: Path | None = None,
 
     def _wards(s, province: str) -> list[tuple[str, int]]:
         w = func.coalesce(Property.ward_manual, Property.ward)
-        return [(n, c) for n, c in s.execute(select(w, func.count()).where(Property.province == province, w.is_not(None))
+        pv = func.coalesce(Property.province_manual, Property.province)
+        return [(n, c) for n, c in s.execute(select(w, func.count()).where(pv == province, w.is_not(None))
                                              .group_by(w).order_by(w))]
 
     @app.get("/api/wards")
@@ -188,7 +191,8 @@ def create_app(repo: Repository | None = None, media_root: Path | None = None,
                                  .order_by(Comment.created_at.desc())).all()
             tasks = s.scalars(select(Task).where(Task.property_id == pid).order_by(Task.status, Task.due_date)).all()
             acts = s.scalars(select(Activity).where(Activity.property_id == pid).order_by(Activity.at.desc()).limit(50)).all()
-            return render(request, "detail.html", user, p=p, links=links, sessions=sessions, latest=latest, assets=assets,
+            ocr_refs = [(n, (n.raw or {}).get("ocr_prices")) for _, n in links if (n.raw or {}).get("ocr_prices")]
+            return render(request, "detail.html", user, p=p, links=links, sessions=sessions, ocr_refs=ocr_refs, latest=latest, assets=assets,
                           folders=folders, users=users, views=views, comments=comments, tasks=tasks, acts=acts,
                           edit=edit, now=datetime.now(), today=date.today(), docs_pending=docs_pending)
 
@@ -201,22 +205,28 @@ def create_app(repo: Repository | None = None, media_root: Path | None = None,
             p = _get_prop(s, pid)
             changes = []
             for name, label in EDITABLE.items():
+                if name not in form:
+                    continue                      # trường không gửi lên -> giữ nguyên
                 raw = (form.get(name) or "").strip()
                 col = f"{name}_manual"
                 typ = Property.__table__.columns[col].type.python_type
                 if raw == "":
                     val = None
+                elif name in MONEY_FIELDS:
+                    val = parse_vnd(raw)          # "5.373.459.000", "5,37 tỷ", "850 triệu"
+                    if not val:
+                        continue
                 elif typ is float:
-                    try:
-                        val = float(raw.replace(".", "").replace(",", ".")) if "," in raw else float(raw)
-                    except ValueError:
+                    val = parse_number(raw)       # "81,5" | "1.036,5" | "76.4"
+                    if val is None:
                         continue
                 else:
-                    val = raw
+                    val = raw[:500]
                 if getattr(p, col) != val:
                     changes.append(f"{label}: {fmt.plain(getattr(p, col))} → {fmt.plain(val)}")
                     setattr(p, col, val)
             if changes:
+                p.recompute_discount()
                 log_act(s, pid, user, "edit", "; ".join(changes))
         return back(f"/p/{pid}")
 

@@ -15,9 +15,9 @@
   <h1 class="clamp" title="Bấm để xem đầy đủ" onclick="this.classList.toggle('open')">{{ p.title }}</h1>
   <div class="loc">{{ parcel_or_address(p) }}</div>
   <div class="kpis">
-    <div><span class="lbl">Giá hiện tại</span><span class="v">{{ fmt.money(p.price_latest) }}</span>
-      <span class="small muted">{{ fmt.money(p.price_latest, False) }}</span></div>
-    <div><span class="lbl">Giá phiên 1</span><span class="v">{{ fmt.money(p.price_first) }}</span></div>
+    <div><span class="lbl">Giá hiện tại{% if p.price_latest_manual %} · nhập tay{% endif %}</span><span class="v">{{ fmt.money(p.eff('price_latest')) }}</span>
+      <span class="small muted">{{ fmt.money(p.eff('price_latest'), False) }}</span></div>
+    <div><span class="lbl">Giá phiên 1{% if p.price_first_manual %} · nhập tay{% endif %}</span><span class="v">{{ fmt.money(p.eff('price_first')) }}</span></div>
     <div><span class="lbl">Giảm so phiên 1</span><span class="v {{ 'disc' if p.discount_pct }}">{{ ('−' ~ fmt.num(p.discount_pct) ~ '%') if p.discount_pct else '—' }}</span>
       <span class="small muted">{{ p.session_count }} phiên</span></div>
     <div><span class="lbl">Hạn đăng ký</span><span class="v">{{ fmt.dt(p.registration_end) }}</span>{{ deadline(p.registration_end) }}</div>
@@ -36,30 +36,46 @@
   <form method="post" action="/p/{{ p.id }}/fields" class="editgrid">
     <input type="hidden" name="csrf" value="{{ csrf }}">
     {% for name, label in EDITABLE.items() %}
+    {% set auto = p[name] %}
     <label>{{ label }}
-      <input name="{{ name }}" value="{{ p[name ~ '_manual'] if p[name ~ '_manual'] is not none else '' }}"
-             placeholder="Tự động: {{ p[name] if p[name] is not none else 'không có' }}">
+      {% if name == 'province' %}
+      <select name="province"><option value="">{{ 'Từ tin gốc: ' ~ auto if auto else '— chưa xác định —' }}</option>
+        {% for pv in PROVINCES %}<option {{ 'selected' if p.province_manual == pv }}>{{ pv }}</option>{% endfor %}</select>
+      {% else %}
+      <input name="{{ name }}" value="{{ (fmt.money(p[name ~ '_manual'], False)|replace(' đ','') if name in MONEY_FIELDS else p[name ~ '_manual']) if p[name ~ '_manual'] is not none else '' }}"
+             placeholder="{{ ('Từ tin gốc: ' ~ (fmt.money(auto, False) if name in MONEY_FIELDS else auto)) if auto is not none else 'Chưa có – nhập tay' }}"
+             {{ 'inputmode=decimal' if name not in ('map_sheet','parcel_no','ward','address') }}>
+      {% endif %}
     </label>
     {% endfor %}
-    <p class="small muted span2">Để trống = dùng giá trị tự động (trong ô gợi ý). Giá trị nhập tay được ưu tiên khi hiển thị và lọc.</p>
+    <p class="small muted span2">Để trống = dùng giá trị lấy từ tin gốc (chữ xám trong ô). Giá trị nhập tay được ưu tiên khi hiển thị, lọc và tính % giảm. Giá nhập dạng 5.373.459.000 hoặc 5,37 tỷ; diện tích dạng 81,5.</p>
     <div class="span2"><button class="btn primary">Lưu</button> <a class="btn" href="/p/{{ p.id }}">Huỷ</a></div>
   </form>
   {% else %}
   <dl class="specs">
-    {% for name, label in EDITABLE.items() %}
+    {% for name, label in EDITABLE.items() if name not in MONEY_FIELDS %}
     {% set v = p.eff(name) %}
     <div><dt>{{ label }}</dt>
-      <dd>{% if name.endswith('area') %}{{ fmt.area(v) }}{% elif name in ('width','length') %}{{ fmt.num(v, ' m') }}{% else %}{{ v or '—' }}{% endif %}
-        {% if p[name ~ '_manual'] not in (none, '') %}<span class="tag manual" title="Tự động: {{ p[name] }}">nhập tay</span>
-        {% elif v not in (none, '') %}<span class="tag auto">tự động</span>{% endif %}</dd></div>
+      <dd>{% if v in (none, '') %}<span class="empty-v">— chưa có</span>
+        {% elif name.endswith('area') %}{{ fmt.area(v) }}{% elif name in ('width','length') %}{{ fmt.num(v, ' m') }}{% else %}{{ v }}{% endif %}
+        {% if p[name ~ '_manual'] not in (none, '') %}<span class="tag manual" title="Giá trị từ tin gốc: {{ p[name] if p[name] is not none else 'không có' }}">nhập tay</span>
+        {% elif v not in (none, '') %}<span class="tag auto" title="Ghi rõ trong tin đăng">từ tin gốc</span>{% endif %}</dd></div>
     {% endfor %}
-    <div><dt>Tỉnh / thành phố</dt><dd>{{ p.province or '—' }}</dd></div>
     <div><dt>Người có tài sản</dt><dd>{{ p.owner_name or '—' }}</dd></div>
     <div><dt>Tổ chức đấu giá</dt><dd>{{ latest.auction_org if latest else '—' }}</dd></div>
     <div><dt>Địa điểm đấu giá</dt><dd>{{ (latest.auction_place if latest else None) or '—' }}</dd></div>
   </dl>
-  {% if p.parcels and p.parcels|length > 1 %}
-  <p class="small muted">Các tờ/thửa nhắc tới trong tin: {% for to, th in p.parcels %}{{ 'Tờ ' ~ to if to }}{{ ' · ' if to and th }}{{ 'Thửa ' ~ th if th }}{{ '; ' if not loop.last }}{% endfor %}</p>
+  {% if p.auto_notes %}
+  <div class="notes"><b>Để trống vì chưa đủ căn cứ</b> – vui lòng nhập tay sau khi đối chiếu hồ sơ:
+    <ul>{% for n in p.auto_notes %}<li>{{ n }}</li>{% endfor %}</ul></div>
+  {% endif %}
+  {% for n, o in ocr_refs %}
+  <div class="notes ref"><b>Giá tham khảo đọc từ PDF (OCR – chưa xác nhận, không dùng để lọc):</b>
+    {% if o.starting_price %}giá khởi điểm {{ fmt.money(o.starting_price, False) }}{% endif %}{% if o.deposit %}; đặt trước {{ fmt.money(o.deposit, False) }}{% endif %}{% if o.dossier_fee %}; hồ sơ {{ fmt.money(o.dossier_fee, False) }}{% endif %}
+    – đối chiếu file trong “Tài liệu nguồn” rồi nhập tay vào ô giá nếu đúng.</div>
+  {% endfor %}
+  {% if p.parcels %}
+  <p class="small muted">Tờ/thửa được nhắc tới trong tin (tham khảo): {% for to, th in p.parcels %}{{ 'Tờ ' ~ to if to }}{{ ' · ' if to and th }}{{ 'Thửa ' ~ th if th }}{{ '; ' if not loop.last }}{% endfor %}</p>
   {% endif %}
   {% endif %}
   {% if latest %}

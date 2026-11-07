@@ -13,6 +13,6 @@
 {%- if to %}{% set _ = parts.append('Tờ ' ~ to) %}{% endif -%}
 {%- if thua %}{% set _ = parts.append('Thửa ' ~ thua) %}{% endif -%}
 {%- set head = parts|join(' · ') -%}
-{%- set place = [p.eff('ward') if (to or thua) else (p.eff('address') or p.eff('ward')), p.province]|select|join(', ') -%}
+{%- set place = [p.eff('ward') if (to or thua) else (p.eff('address') or p.eff('ward')), p.eff('province')]|select|join(', ') -%}
 {{ head }}{{ ' — ' if head and place }}{{ place }}
 {%- endmacro %}

@@ -1,5 +1,7 @@
 # Hướng dẫn cài đặt, vận hành và sử dụng
 
+> **Cài trên VPS chưa có tên miền?** Làm theo [HUONG_DAN_VPS.md](HUONG_DAN_VPS.md) – từng bước, có script cài tự động.
+
 Tài liệu gồm 3 phần:
 
 - **Phần A – Cài đặt máy chủ** (cho người phụ trách kỹ thuật, làm 1 lần)
@@ -345,10 +347,12 @@ Bấm vào tiêu đề để xem đầy đủ khi bị cắt ngắn.
 **Thông số tài sản:** tổng diện tích đất, diện tích đất ở, đất khác, diện tích sàn, số tờ, số thửa,
 chiều ngang, chiều dài, xã/phường, địa chỉ.
 
-- Nhãn **tự động** = phần mềm tự đọc từ nội dung tin – *có thể sai hoặc thiếu*, nhất là khi tin gồm nhiều thửa.
-- Bấm **Sửa / nhập tay** để điền giá trị đúng (ví dụ theo sổ đỏ, trích lục). Ô gợi ý màu xám là giá trị tự động;
-  **để trống** = dùng lại giá trị tự động. Giá trị nhập tay có nhãn **nhập tay**, được dùng khi lọc và
-  **không bị ghi đè** khi hệ thống cập nhật dữ liệu mới.
+- Nhãn **từ tin gốc** = thông tin được ghi rõ trong tin đăng (phần mềm chỉ tự điền khi có nhãn rõ ràng và
+  chỉ có một giá trị). Ô ghi **— chưa có** = tin không ghi, hoặc ghi chưa đủ rõ (nhiều thửa, nhiều con số khác
+  nhau...). Lý do để trống hiện trong khung vàng *“Để trống vì chưa đủ căn cứ”*.
+- Bấm **Sửa / nhập tay** để điền giá trị đúng theo sổ đỏ, trích lục... (kể cả **giá hiện tại, giá phiên 1,
+  tỉnh/thành**). Chữ xám trong ô là giá trị từ tin gốc; **để trống** = dùng lại giá trị đó. Giá trị nhập tay
+  có nhãn **nhập tay**, được dùng khi lọc và tính % giảm, và **không bị ghi đè** khi phần mềm cập nhật.
 - *Mô tả đầy đủ trong thông báo gần nhất*: nguyên văn tin và bảng các tài sản trong thông báo.
 
 **Các phiên đấu giá:** mỗi dòng một phiên – ngày đấu giá, hạn đăng ký, giá khởi điểm, % so phiên 1,
@@ -386,9 +390,11 @@ mô tả trùng khớp). Cách xử lý khi gom sai:
 
 Lựa chọn gộp/tách thủ công được hệ thống ghi nhớ, không bị thay đổi ở các lần cập nhật sau.
 
-### C6. Lưu ý về độ chính xác
+### C6. Nguyên tắc dữ liệu
 
-- Diện tích, tờ/thửa, xã/phường được **đọc tự động từ văn bản tin** – luôn đối chiếu hồ sơ trước khi ra
-  quyết định, và nhập tay giá trị đúng để cả nhóm dùng chung.
-- Giá taisancong lấy bằng OCR từ PDF scan, có thể sai – kiểm tra với file trong *Tài liệu nguồn*.
-- Chỉ dữ liệu từ 2 nguồn công khai (dgts.moj.gov.vn, taisancong.vn); tin đăng ở nơi khác không có trong hệ thống.
+- Phần mềm **không suy luận**: thông tin chưa chắc chắn được để trống để người dùng nhập tay. Bảng chi tiết
+  từng loại thông tin (khi nào tự điền, khi nào để trống) xem [HUONG_DAN_VPS.md – Nguyên tắc dữ liệu](HUONG_DAN_VPS.md#nguyên-tắc-dữ-liệu-chưa-chắc-chắn-thì-để-trống).
+- Giá taisancong chỉ có trong PDF; phần mềm đọc bằng OCR và hiện làm **giá tham khảo** (khung xanh), không dùng
+  để lọc – đối chiếu file trong *Tài liệu nguồn* rồi nhập tay vào ô giá.
+- Luôn đối chiếu hồ sơ gốc trước khi ra quyết định, rồi bấm **✓ Xác thực** để cả nhóm biết.
+- Chỉ có dữ liệu từ 2 nguồn công khai (dgts.moj.gov.vn, taisancong.vn).

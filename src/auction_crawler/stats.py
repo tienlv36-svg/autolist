@@ -35,7 +35,7 @@ def load_df(repo: Repository, date_from: date | None = None, date_to: date | Non
         rows = s.scalars(q).all()
     cols = [c.name for c in NoticeRow.__table__.columns if c.name not in ("raw", "content")]
     df = pd.DataFrame([{**{c: getattr(r, c) for c in cols},
-                        "price_source": (r.raw or {}).get("price_source") or ("web" if r.starting_price else None)}
+                        "price_source": "web" if r.starting_price else ("pdf-ocr (tham khảo)" if (r.raw or {}).get("ocr_prices") else None)}
                        for r in rows], columns=[*cols, "price_source"])
     clf = RuleClassifier()
     df["asset_type_label"] = df["asset_type"].map(lambda c: clf.label_of("asset_type", c))

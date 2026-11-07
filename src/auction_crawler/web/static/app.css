@@ -93,3 +93,6 @@ details>summary{list-style:none}details>summary::-webkit-details-marker{display:
 .fdetails>summary{cursor:pointer}.fdetails>summary h2{margin:0}.fdetails[open]>summary{margin-bottom:10px}
 .topbar nav a,.topbar .brand{white-space:nowrap}
 @media (max-width:820px){.topbar{height:auto;min-height:48px;padding:6px 12px}.topbar nav a{padding:6px 8px}.brand{font-size:14px}}
+.empty-v{color:#9aa1ad;font-weight:400}
+.notes{background:var(--amber-bg);color:#6b4a00;border-radius:8px;padding:8px 12px;font-size:12px;margin-top:10px}
+.notes ul{margin:4px 0 0 18px;padding:0}.notes.ref{background:var(--blue-bg);color:var(--blue)}

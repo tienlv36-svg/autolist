@@ -71,8 +71,9 @@ def build_notice(source: str, item: dict, classifier: RuleClassifier) -> Auction
         **{k: parse_vnd(item.get(k)) for k in MONEY},
         **{k: parse_datetime(item.get(k)) for k in DATETIMES},
     )
-    n.province, n.province_raw = detect_province(n.address, n.asset_name, n.title, n.owner_address,
-                                                 n.auction_place, n.asset_owner)
+    # tỉnh nơi có TÀI SẢN: chỉ từ địa chỉ/mô tả tài sản (không đoán từ tên chủ tài sản hay nơi đấu giá)
+    from .realestate.extract import detect_province_strict
+    n.province, n.province_raw = detect_province_strict(n.address, n.asset_name, n.title)
     labels = classifier.classify(n.classify_fields())
     if "asset_type" in labels:
         n.asset_type, n.classify_score = labels["asset_type"].code, labels["asset_type"].score
@@ -241,8 +242,8 @@ def reclassify_all(repo: Repository) -> int:
             labels = clf.classify(row_fields(row))
             row.asset_type, row.classify_score = labels["asset_type"].code, labels["asset_type"].score
             row.origin = labels["origin"].code
-            row.province, row.province_raw = detect_province(row.address, row.asset_name, row.title,
-                                                             row.owner_address, row.auction_place, row.asset_owner)
+            from .realestate.extract import detect_province_strict
+            row.province, row.province_raw = detect_province_strict(row.address, row.asset_name, row.title)
             n += 1
     return n
 
@@ -256,7 +257,7 @@ def ocr_prices(name: str, settings: Settings, repo: Repository, *, limit: int = 
     from .ocr import extract_prices, pdf_text
 
     src = get_source(name)
-    q = select(NoticeRow).where(NoticeRow.source == name, NoticeRow.starting_price.is_(None),
+    q = select(NoticeRow).where(NoticeRow.source == name, NoticeRow.starting_price.is_(None),  # noqa: E501
                                 NoticeRow.detail_fetched.is_(True))
     if since:
         q = q.where(NoticeRow.publish_date >= since)
@@ -291,10 +292,9 @@ def ocr_prices(name: str, settings: Settings, repo: Repository, *, limit: int = 
                     stats.error(f"{url}: {e!r}")
             with repo.Session.begin() as s:
                 row = s.get(NoticeRow, r.id)
-                row.raw = {**(row.raw or {}), "ocr_tried": True, "price_source": f"pdf-{method}" if got else None}
-                for k in ("starting_price", "deposit", "dossier_fee"):
-                    if got.get(k) and getattr(row, k) is None:
-                        setattr(row, k, got[k])
+                # chỉ lưu làm THAM KHẢO (OCR có thể đọc sai số) - không ghi vào cột giá chính thức
+                row.raw = {**(row.raw or {}), "ocr_tried": True,
+                           "ocr_prices": {**got, "method": method} if got else None}
             if got:
                 stats.updated += 1
             log.info("[%s] %s: %s (%s)", name, r.source_id, got or "không tìm thấy giá", method)

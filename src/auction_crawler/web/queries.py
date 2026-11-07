@@ -16,8 +16,8 @@ def eff(col: str):
 SORTS = {
     "han_dang_ky": ("Sắp hết hạn đăng ký", lambda: [Property.registration_end.is_(None), Property.registration_end.asc()]),
     "moi_nhat": ("Mới đăng", lambda: [Property.publish_date.desc().nulls_last(), Property.id.desc()]),
-    "gia_tang": ("Giá thấp → cao", lambda: [Property.price_latest.is_(None), Property.price_latest.asc()]),
-    "gia_giam": ("Giá cao → thấp", lambda: [Property.price_latest.desc().nulls_last()]),
+    "gia_tang": ("Giá thấp → cao", lambda: [eff("price_latest").is_(None), eff("price_latest").asc()]),
+    "gia_giam": ("Giá cao → thấp", lambda: [eff("price_latest").desc().nulls_last()]),
     "giam_nhieu": ("Giảm giá nhiều nhất", lambda: [Property.discount_pct.desc().nulls_last()]),
     "uu_tien": ("Ưu tiên cao", lambda: [Property.priority.desc(), Property.registration_end.asc()]),
     "dien_tich": ("Diện tích lớn", lambda: [eff("land_area").desc().nulls_last()]),
@@ -83,13 +83,13 @@ def build_query(f: Filters, user_id: int):
     if f.category:
         conds.append(Property.category.in_(f.category))
     if f.province:
-        conds.append(Property.province == f.province)
+        conds.append(eff("province") == f.province)
     if f.ward:
         conds.append(eff("ward") == f.ward)
     if f.price_min is not None:
-        conds.append(Property.price_latest >= int(f.price_min * 1e9))
+        conds.append(eff("price_latest") >= int(f.price_min * 1e9))
     if f.price_max is not None:
-        conds.append(Property.price_latest <= int(f.price_max * 1e9))
+        conds.append(eff("price_latest") <= int(f.price_max * 1e9))
     if f.area_min is not None:
         conds.append(eff("land_area") >= f.area_min)
     if f.area_max is not None:
