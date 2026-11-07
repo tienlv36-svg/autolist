@@ -1,0 +1,15 @@
+# Thu thập tự động mỗi 6 giờ (crawl -> tag-types -> ocr -> dedupe -> re-build)
+# copy vào /etc/systemd/system/ rồi: sudo systemctl enable --now auction-scheduler
+[Unit]
+Description=Auction crawler scheduler
+After=network-online.target
+
+[Service]
+User=auction
+WorkingDirectory=/opt/autolist
+ExecStart=/opt/autolist/.venv/bin/auction schedule
+Restart=always
+RestartSec=60
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,14 @@
+# Ứng dụng web - copy vào /etc/systemd/system/ rồi: sudo systemctl enable --now auction-web
+[Unit]
+Description=Auction BDS web app
+After=network-online.target
+
+[Service]
+User=auction
+WorkingDirectory=/opt/autolist
+ExecStart=/opt/autolist/.venv/bin/auction web --host 127.0.0.1 --port 8000
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

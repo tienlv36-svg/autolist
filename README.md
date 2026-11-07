@@ -1,5 +1,8 @@
 # auction-crawler
 
+> 📘 **Hướng dẫn chi tiết từng bước** (cài máy chủ, chạy tự động, HTTPS, sao lưu, hướng dẫn sử dụng cho nhân viên):
+> [docs/HUONG_DAN.md](docs/HUONG_DAN.md). File triển khai mẫu nằm trong [deploy/](deploy/).
+
 Thu thập, phân loại và thống kê tin đăng đấu giá tài sản từ 2 nguồn (cấu trúc đã kiểm chứng 07/11/2026):
 
 | Nguồn | Mã | Cách lấy dữ liệu | Quy mô |

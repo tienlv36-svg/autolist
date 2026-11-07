@@ -1,0 +1,9 @@
+# HTTPS tự động (Let's Encrypt). Thay daugia.congty.vn bằng tên miền của bạn (đã trỏ DNS về máy chủ).
+# sudo cp Caddyfile /etc/caddy/Caddyfile && sudo systemctl reload caddy
+daugia.congty.vn {
+	encode gzip
+	request_body {
+		max_size 1GB
+	}
+	reverse_proxy 127.0.0.1:8000
+}
