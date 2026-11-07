@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Đăng nhập{% endblock %}
+{% block main_class %}login-wrap{% endblock %}
+{% block content %}
+<form class="card login" method="post" action="/login">
+  <h1>◆ Đấu giá BĐS</h1>
+  <p class="muted">Đăng nhập để tiếp tục</p>
+  {% if error %}<div class="alert">{{ error }}</div>{% endif %}
+  <input type="hidden" name="next" value="{{ next }}">
+  <label>Tên đăng nhập<input name="username" autocomplete="username" required autofocus></label>
+  <label>Mật khẩu<input type="password" name="password" autocomplete="current-password" required></label>
+  <button class="btn primary block">Đăng nhập</button>
+</form>
+{% endblock %}

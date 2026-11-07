@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% from "_macros.html" import priority_badge, verified_badge, deadline, parcel_or_address %}
+{% block main_class %}wrap wide{% endblock %}
+{% block content %}
+<div class="layout">
+<form class="filters card" method="get" action="/" id="filters">
+  <details class="fdetails" open>
+  <summary class="fhead"><h2>Bộ lọc <span class="fcount muted small"></span></h2><a href="/" class="link small">Xoá lọc</a></summary>
+  <label>Tìm kiếm<input name="q" value="{{ f.q }}" placeholder="Tên tài sản, địa chỉ, số thửa, chủ TS…"></label>
+
+  <fieldset><legend>Chủ tài sản</legend>
+    {% for k, v in [('ngan_hang_bao_dam','Ngân hàng / TCTD'),('thi_hanh_an','Thi hành án'),('tai_san_cong','Cơ quan quản lý NN'),('tich_thu','Tịch thu / SH toàn dân'),('pha_san','Phá sản'),('doanh_nghiep_ca_nhan','DN / cá nhân')] %}
+    <label class="chk"><input type="checkbox" name="owner_type" value="{{ k }}" {{ 'checked' if k in f.owner_type }}> {{ v }}</label>
+    {% endfor %}
+  </fieldset>
+
+  <fieldset><legend>Hình thức</legend>
+    {% for k, v in SALE_FORMS.items() %}
+    <label class="chk"><input type="checkbox" name="sale_form" value="{{ k }}" {{ 'checked' if k in f.sale_form }}> {{ v }}</label>
+    {% endfor %}
+  </fieldset>
+
+  <fieldset><legend>Loại BĐS</legend>
+    {% for k, v in CATEGORIES.items() %}
+    <label class="chk"><input type="checkbox" name="category" value="{{ k }}" {{ 'checked' if k in f.category }}> {{ v }}</label>
+    {% endfor %}
+  </fieldset>
+
+  <label>Tỉnh / thành phố
+    <select name="province" id="province">
+      <option value="">Tất cả</option>
+      {% for pv in provinces %}<option {{ 'selected' if pv == f.province }}>{{ pv }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>Xã / phường (nơi có tài sản)
+    <select name="ward" id="ward" {{ 'disabled' if not f.province }}>
+      <option value="">{{ 'Tất cả' if f.province else 'Chọn tỉnh trước' }}</option>
+      {% for w, c in wards %}<option value="{{ w }}" {{ 'selected' if w == f.ward }}>{{ w }} ({{ c }})</option>{% endfor %}
+    </select>
+  </label>
+
+  <div class="row2">
+    <label>Giá từ (tỷ)<input name="price_min" inputmode="decimal" value="{{ fmt.num(f.price_min) if f.price_min is not none else '' }}"></label>
+    <label>đến (tỷ)<input name="price_max" inputmode="decimal" value="{{ fmt.num(f.price_max) if f.price_max is not none else '' }}"></label>
+  </div>
+  <div class="row2">
+    <label>DT đất từ (m²)<input name="area_min" inputmode="decimal" value="{{ fmt.num(f.area_min) if f.area_min is not none else '' }}"></label>
+    <label>đến (m²)<input name="area_max" inputmode="decimal" value="{{ fmt.num(f.area_max) if f.area_max is not none else '' }}"></label>
+  </div>
+  <label>Mức ưu tiên tối thiểu
+    <select name="priority_min"><option value="">Tất cả</option>
+      {% for k, v in PRIORITIES.items() if k > 0 %}<option value="{{ k }}" {{ 'selected' if f.priority_min == k }}>{{ v }} trở lên</option>{% endfor %}
+    </select>
+  </label>
+  <label>Xác thực
+    <select name="verified"><option value="">Tất cả</option>
+      <option value="1" {{ 'selected' if f.verified == '1' }}>Đã xác thực</option>
+      <option value="0" {{ 'selected' if f.verified == '0' }}>Chưa xác thực</option>
+    </select>
+  </label>
+  <label class="chk"><input type="checkbox" name="open_only" value="1" {{ 'checked' if f.open_only }}> Còn hạn đăng ký</label>
+  <label class="chk"><input type="checkbox" name="discounted" value="1" {{ 'checked' if f.discounted }}> Đã giảm giá so với phiên 1</label>
+  <label class="chk"><input type="checkbox" name="multi_session" value="1" {{ 'checked' if f.multi_session }}> Đấu giá nhiều phiên</label>
+  <label class="chk"><input type="checkbox" name="mine" value="1" {{ 'checked' if f.mine }}> Được giao cho tôi</label>
+  <input type="hidden" name="sort" value="{{ f.sort }}">
+  <button class="btn primary block">Lọc</button>
+  </details>
+</form>
+
+<section class="results">
+  <div class="rhead">
+    <div><strong>{{ '{:,}'.format(total).replace(',', '.') }}</strong> tài sản</div>
+    <label class="sort">Sắp xếp
+      <select name="sort" form="filters" onchange="this.form.submit()">
+        {% for k, (lbl, _) in SORTS.items() %}<option value="{{ k }}" {{ 'selected' if k == f.sort }}>{{ lbl }}</option>{% endfor %}
+      </select>
+    </label>
+  </div>
+  {% if not items %}<div class="card empty">Không có tài sản phù hợp bộ lọc.</div>{% endif %}
+  <div class="grid">
+  {% for p in items %}
+    <a class="card prop" href="/p/{{ p.id }}">
+      <div class="badges">
+        <span class="badge sf-{{ p.sale_form }}">{{ SALE_FORMS.get(p.sale_form, '') }}</span>
+        {{ verified_badge(p) }}{{ priority_badge(p.priority) }}
+      </div>
+      <h3 title="{{ p.title }}">{{ p.title }}</h3>
+      <div class="loc">{{ parcel_or_address(p) }}</div>
+      <div class="price">
+        <span class="big">{{ fmt.money(p.price_latest) }}</span>
+        {% if p.discount_pct %}<span class="disc">−{{ fmt.num(p.discount_pct) }}% so phiên 1</span>{% if p.link_warning %}<span class="badge warn" title="{{ p.link_warning }}">⚠ kiểm tra</span>{% endif %}
+        {% elif p.session_count > 1 %}<span class="muted small">{{ p.session_count }} phiên</span>{% endif %}
+      </div>
+      <dl class="facts">
+        <div><dt>DT đất</dt><dd>{{ fmt.area(p.eff('land_area')) }}</dd></div>
+        <div><dt>DT sàn</dt><dd>{{ fmt.area(p.eff('floor_area')) }}</dd></div>
+        <div><dt>Hạn ĐK</dt><dd>{{ fmt.dt(p.registration_end, False) }}</dd></div>
+      </dl>
+      <div class="foot">
+        {{ deadline(p.registration_end) }}
+        <span class="muted small">{{ OWNER_TYPES.get(p.owner_type or 'khac', '') }}</span>
+      </div>
+    </a>
+  {% endfor %}
+  </div>
+  {% if pages > 1 %}
+  <nav class="pager">
+    {% if page > 1 %}<a href="/?{{ base_qs }}&page={{ page - 1 }}">‹ Trước</a>{% endif %}
+    <span>Trang {{ page }} / {{ pages }}</span>
+    {% if page < pages %}<a href="/?{{ base_qs }}&page={{ page + 1 }}">Sau ›</a>{% endif %}
+  </nav>
+  {% endif %}
+</section>
+</div>
+{% endblock %}

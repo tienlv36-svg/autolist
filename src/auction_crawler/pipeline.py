@@ -171,13 +171,20 @@ def crawl_source(name: str, settings: Settings, repo: Repository, *, max_pages: 
 
 
 def enrich_missing(name: str, settings: Settings, repo: Repository, *, limit: int = 1000,
-                   since: date | None = None) -> RunStats:
-    """Tải chi tiết cho các tin đã có trong DB nhưng chưa có chi tiết (sau khi backfill --no-detail)."""
+                   since: date | None = None, realestate: bool = False) -> RunStats:
+    """Tải chi tiết cho các tin đã có trong DB nhưng chưa có chi tiết (sau khi backfill --no-detail).
+    realestate=True: chỉ tin thuộc tài sản BĐS (cần chạy `re-build` trước), ưu tiên tài sản nhiều phiên."""
     src = get_source(name)
     q = select(NoticeRow).where(NoticeRow.source == name, NoticeRow.detail_fetched.is_not(True))
     if since:
         q = q.where(NoticeRow.publish_date >= since)
-    q = q.order_by(NoticeRow.publish_date.desc()).limit(limit)
+    if realestate:
+        from .realestate.db import Property, PropertyNotice
+        q = (q.join(PropertyNotice, PropertyNotice.notice_id == NoticeRow.id)
+             .join(Property, Property.id == PropertyNotice.property_id)
+             .order_by(Property.session_count.desc(), NoticeRow.publish_date.desc()).limit(limit))
+    else:
+        q = q.order_by(NoticeRow.publish_date.desc()).limit(limit)
     with repo.session() as s:
         rows = s.scalars(q).all()
     items = []

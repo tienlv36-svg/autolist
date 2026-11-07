@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Tài khoản của tôi{% endblock %}
+{% block content %}
+<form class="card stack narrow" method="post" action="/account">
+  <h1>{{ user.full_name }} <span class="muted small">@{{ user.username }}</span></h1>
+  {% if msg %}<div class="alert info">{{ msg }}</div>{% endif %}
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <label>Mật khẩu hiện tại<input type="password" name="old" required autocomplete="current-password"></label>
+  <label>Mật khẩu mới (≥ 8 ký tự)<input type="password" name="new" required minlength="8" autocomplete="new-password"></label>
+  <button class="btn primary">Đổi mật khẩu</button>
+</form>
+{% endblock %}

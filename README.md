@@ -95,6 +95,39 @@ Sheet: Theo nguồn · Loại TS chính thức · Theo loại tài sản · Theo
 Theo tháng · Tháng × Loại · Top tổ chức ĐG · Top người có TS · Chi tiết. Các sheet tổng hợp
 (trừ "Theo nguồn") đã loại tin trùng giữa 2 nguồn.
 
+## Ứng dụng quản lý tài sản BĐS đấu giá (web)
+
+Lọc riêng tin bất động sản (bán, cho thuê, bán khoản nợ có tài sản bảo đảm là BĐS), gom các thông báo của
+**cùng một tài sản** thành các phiên đấu giá, và cung cấp giao diện làm việc nhóm.
+
+```bash
+.venv/bin/auction re-build                        # lọc tin BĐS + trích thông số + gom phiên (chạy sau mỗi lần crawl)
+.venv/bin/auction enrich -s dgts --realestate -n 5000   # lấy giá/tiền đặt trước cho tin BĐS (ưu tiên TS nhiều phiên)
+.venv/bin/auction user-add admin --name "Quản trị" --admin
+.venv/bin/auction web --host 0.0.0.0 --port 8000  # http://<máy chủ>:8000
+```
+
+**Danh sách** – thẻ tài sản: tổng DT đất, DT sàn, nhãn đã xác thực, giá hiện tại, hạn đăng ký (đếm ngược),
+mức ưu tiên, % giảm so với phiên 1, tờ/thửa hoặc địa chỉ. Bộ lọc: chủ tài sản (ngân hàng / thi hành án /
+cơ quan quản lý / tịch thu / phá sản / DN-cá nhân), hình thức (bán / cho thuê / khoản nợ), loại BĐS,
+tỉnh, xã/phường nơi có tài sản, khoảng giá (tỷ), khoảng diện tích, ưu tiên, xác thực, còn hạn đăng ký,
+đã giảm giá, nhiều phiên, việc được giao cho tôi; sắp xếp theo hạn đăng ký / giá / % giảm / ưu tiên...
+
+**Chi tiết** – tổng DT đất, DT đất ở, DT đất khác, DT sàn, số tờ, số thửa, chiều ngang, chiều dài,
+xã/phường, địa chỉ: giá trị **tự động** trích từ văn bản, sửa được bằng **nhập tay** (ưu tiên khi hiển thị
+và lọc, giữ nguyên khi chạy lại); bảng các phiên (giá phiên 1, phiên gần nhất, % giảm, link nguồn, tách
+phiên gộp nhầm / gộp với tài sản khác); thư mục ảnh/video/tài liệu (tải lên, phân thư mục, xem ảnh, phát
+video, kèm **tài liệu gốc** quy chế/thông báo lấy từ website nguồn); **lịch sử xem tài liệu** (ai, xem/tải,
+lúc nào); **nhận xét** (lưu tài khoản + thời gian, sửa/xoá của mình); **phân loại ưu tiên** thủ công;
+**xác thực** (ai, lúc nào); **giao việc** giữa các tài khoản (người nhận, hạn, trạng thái) + trang
+"Việc của tôi"; **nhật ký thao tác**.
+
+Gom phiên: cùng tỉnh + xã/phường + (tờ, thửa) đầu tiên, hoặc cùng chủ tài sản + mô tả trùng khớp (tin đấu
+giá lại thường giữ nguyên mô tả), hoặc cùng cuộc đấu giá đăng ở 2 nguồn. Gộp/tách thủ công luôn được tôn trọng.
+
+File tải lên lưu ở `data/media/<id tài sản>/`; khoá ký cookie ở `data/secret.key` (hoặc biến `AUCTION_SECRET`).
+Khi đưa lên mạng nội bộ/Internet nên đặt sau HTTPS (nginx/Caddy) và sao lưu định kỳ `data/`.
+
 ## Bảo trì
 - `make check` (tools/check_sources.py) định kỳ; trả mã lỗi khi một nguồn hỏng → gắn vào cron/CI để cảnh báo.
 - Khi web đổi giao diện: `auction probe <url>` hoặc `tools/probe_browser.py <url>` → sửa YAML/adapter →

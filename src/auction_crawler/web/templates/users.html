@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Tài khoản{% endblock %}
+{% block content %}
+<h1>Quản lý tài khoản</h1>
+{% if msg %}<div class="alert info">{{ msg }}</div>{% endif %}
+<div class="card">
+<div class="tblwrap"><table class="tbl">
+  <tr><th>Tên đăng nhập</th><th>Họ tên</th><th>Quyền</th><th>Hoạt động</th><th>Đặt lại mật khẩu</th><th>Đăng nhập gần nhất</th><th></th></tr>
+  {% for u in users %}
+  <tr><form method="post" action="/admin/users/{{ u.id }}">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <td>@{{ u.username }}</td><td>{{ u.full_name }}</td>
+    <td><select name="role" {{ 'disabled' if u.id == user.id }}><option value="member">Thành viên</option><option value="admin" {{ 'selected' if u.role == 'admin' }}>Quản trị</option></select></td>
+    <td><input type="checkbox" name="active" value="1" {{ 'checked' if u.active }} {{ 'disabled' if u.id == user.id }}></td>
+    <td><input type="password" name="password" placeholder="để trống = giữ nguyên" autocomplete="new-password"></td>
+    <td class="small">{{ fmt.dt(u.last_login) }}</td>
+    <td><button class="btn small">Lưu</button></td>
+  </form></tr>
+  {% endfor %}
+</table></div>
+</div>
+<form class="card stack narrow" method="post" action="/admin/users">
+  <h2>Tạo tài khoản</h2>
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <label>Tên đăng nhập<input name="username" required pattern="[a-zA-Z0-9._\-]{3,64}"></label>
+  <label>Họ tên<input name="full_name" required></label>
+  <label>Mật khẩu (≥ 8 ký tự)<input type="password" name="password" required minlength="8" autocomplete="new-password"></label>
+  <label>Quyền<select name="role"><option value="member">Thành viên</option><option value="admin">Quản trị</option></select></label>
+  <button class="btn primary">Tạo</button>
+</form>
+{% endblock %}

@@ -1,0 +1,18 @@
+{% macro priority_badge(p) -%}
+{% if p and p > 0 %}<span class="badge pr{{ p }}">{{ PRIORITIES[p] }}</span>{% endif %}
+{%- endmacro %}
+{% macro verified_badge(p) -%}
+{% if p.verified %}<span class="badge ok" title="Đã xác thực {{ fmt.dt(p.verified_at) }}">✓ Đã xác thực</span>{% endif %}
+{%- endmacro %}
+{% macro deadline(v) -%}
+{% set lbl, lvl = fmt.days_left(v) %}<span class="dl {{ lvl }}">{{ lbl }}</span>
+{%- endmacro %}
+{% macro parcel_or_address(p) -%}
+{%- set to, thua = p.eff('map_sheet'), p.eff('parcel_no') -%}
+{%- set parts = [] -%}
+{%- if to %}{% set _ = parts.append('Tờ ' ~ to) %}{% endif -%}
+{%- if thua %}{% set _ = parts.append('Thửa ' ~ thua) %}{% endif -%}
+{%- set head = parts|join(' · ') -%}
+{%- set place = [p.eff('ward') if (to or thua) else (p.eff('address') or p.eff('ward')), p.province]|select|join(', ') -%}
+{{ head }}{{ ' — ' if head and place }}{{ place }}
+{%- endmacro %}

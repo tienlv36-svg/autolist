@@ -1,0 +1,232 @@
+{% extends "base.html" %}
+{% from "_macros.html" import priority_badge, verified_badge, deadline, parcel_or_address %}
+{% block title %}{{ p.title[:60] }} – Đấu giá BĐS{% endblock %}
+{% block main_class %}wrap wide{% endblock %}
+{% block content %}
+<a href="javascript:history.back()" class="link small">‹ Quay lại danh sách</a>
+<div class="dhead card">
+  <div class="badges">
+    <span class="badge sf-{{ p.sale_form }}">{{ SALE_FORMS.get(p.sale_form, '') }}</span>
+    <span class="badge">{{ CATEGORIES.get(p.category, '') }}</span>
+    <span class="badge">{{ OWNER_TYPES.get(p.owner_type or 'khac', '') }}</span>
+    {{ verified_badge(p) }}{{ priority_badge(p.priority) }}
+    <span class="muted small">#{{ p.id }}</span>
+  </div>
+  <h1 class="clamp" title="Bấm để xem đầy đủ" onclick="this.classList.toggle('open')">{{ p.title }}</h1>
+  <div class="loc">{{ parcel_or_address(p) }}</div>
+  <div class="kpis">
+    <div><span class="lbl">Giá hiện tại</span><span class="v">{{ fmt.money(p.price_latest) }}</span>
+      <span class="small muted">{{ fmt.money(p.price_latest, False) }}</span></div>
+    <div><span class="lbl">Giá phiên 1</span><span class="v">{{ fmt.money(p.price_first) }}</span></div>
+    <div><span class="lbl">Giảm so phiên 1</span><span class="v {{ 'disc' if p.discount_pct }}">{{ ('−' ~ fmt.num(p.discount_pct) ~ '%') if p.discount_pct else '—' }}</span>
+      <span class="small muted">{{ p.session_count }} phiên</span></div>
+    <div><span class="lbl">Hạn đăng ký</span><span class="v">{{ fmt.dt(p.registration_end) }}</span>{{ deadline(p.registration_end) }}</div>
+    <div><span class="lbl">Ngày đấu giá</span><span class="v">{{ fmt.dt(p.auction_date) }}</span></div>
+    <div><span class="lbl">Tiền đặt trước</span><span class="v">{{ fmt.money(p.deposit_latest) }}</span></div>
+  </div>
+</div>
+
+<div class="dlayout">
+<div class="dmain">
+
+<section class="card" id="thong-so">
+  <div class="shead"><h2>Thông số tài sản</h2>
+    {% if not edit %}<a class="btn" href="/p/{{ p.id }}?edit=1#thong-so">Sửa / nhập tay</a>{% endif %}</div>
+  {% if edit %}
+  <form method="post" action="/p/{{ p.id }}/fields" class="editgrid">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    {% for name, label in EDITABLE.items() %}
+    <label>{{ label }}
+      <input name="{{ name }}" value="{{ p[name ~ '_manual'] if p[name ~ '_manual'] is not none else '' }}"
+             placeholder="Tự động: {{ p[name] if p[name] is not none else 'không có' }}">
+    </label>
+    {% endfor %}
+    <p class="small muted span2">Để trống = dùng giá trị tự động (trong ô gợi ý). Giá trị nhập tay được ưu tiên khi hiển thị và lọc.</p>
+    <div class="span2"><button class="btn primary">Lưu</button> <a class="btn" href="/p/{{ p.id }}">Huỷ</a></div>
+  </form>
+  {% else %}
+  <dl class="specs">
+    {% for name, label in EDITABLE.items() %}
+    {% set v = p.eff(name) %}
+    <div><dt>{{ label }}</dt>
+      <dd>{% if name.endswith('area') %}{{ fmt.area(v) }}{% elif name in ('width','length') %}{{ fmt.num(v, ' m') }}{% else %}{{ v or '—' }}{% endif %}
+        {% if p[name ~ '_manual'] not in (none, '') %}<span class="tag manual" title="Tự động: {{ p[name] }}">nhập tay</span>
+        {% elif v not in (none, '') %}<span class="tag auto">tự động</span>{% endif %}</dd></div>
+    {% endfor %}
+    <div><dt>Tỉnh / thành phố</dt><dd>{{ p.province or '—' }}</dd></div>
+    <div><dt>Người có tài sản</dt><dd>{{ p.owner_name or '—' }}</dd></div>
+    <div><dt>Tổ chức đấu giá</dt><dd>{{ latest.auction_org if latest else '—' }}</dd></div>
+    <div><dt>Địa điểm đấu giá</dt><dd>{{ (latest.auction_place if latest else None) or '—' }}</dd></div>
+  </dl>
+  {% if p.parcels and p.parcels|length > 1 %}
+  <p class="small muted">Các tờ/thửa nhắc tới trong tin: {% for to, th in p.parcels %}{{ 'Tờ ' ~ to if to }}{{ ' · ' if to and th }}{{ 'Thửa ' ~ th if th }}{{ '; ' if not loop.last }}{% endfor %}</p>
+  {% endif %}
+  {% endif %}
+  {% if latest %}
+  <details class="desc"><summary>Mô tả đầy đủ trong thông báo gần nhất</summary>
+    <p>{{ latest.asset_name or latest.title }}</p>
+    {% if assets %}<table class="tbl small"><tr><th>Tài sản</th><th>Nơi có TS</th><th>Giá khởi điểm</th><th>Đặt trước</th></tr>
+      {% for a in assets %}<tr><td>{{ a.name }}</td><td>{{ a.place or '' }}</td><td>{{ fmt.money(a.starting_price, False) }}</td><td>{{ fmt.money(a.deposit, False) if a.deposit_unit == 'VND' else (a.deposit ~ ' ' ~ (a.deposit_unit or '')) }}</td></tr>{% endfor %}
+    </table>{% endif %}
+  </details>
+  {% endif %}
+</section>
+
+<section class="card" id="phien">
+  <div class="shead"><h2>Các phiên đấu giá</h2></div>
+  {% if p.link_warning %}<div class="alert">⚠ {{ p.link_warning }}. Dùng nút “Tách” nếu có thông báo không cùng tài sản.</div>{% endif %}
+  <div class="tblwrap"><table class="tbl">
+    <tr><th>Phiên</th><th>Ngày đấu giá</th><th>Hạn đăng ký</th><th class="r">Giá khởi điểm</th><th class="r">So phiên 1</th><th>Nguồn</th><th></th></tr>
+    {% for se in sessions %}{% set pn, n = se.pn, se.n %}
+    <tr>
+      <td><b>{{ se.no }}</b>{% if pn.manual %} <span class="tag manual" title="Liên kết thủ công">TC</span>{% endif %}</td>
+      <td>{{ fmt.dt(n.auction_date) }}</td><td>{{ fmt.dt(n.registration_end) }}</td>
+      <td class="r">{{ fmt.money(n.starting_price, False) }}</td>
+      <td class="r">{% if n.starting_price and p.price_first and n.starting_price != p.price_first %}{{ '%+.1f'|format((n.starting_price - p.price_first) / p.price_first * 100) }}%{% endif %}</td>
+      <td><a href="{{ n.url }}" target="_blank" rel="noopener">{{ n.source }} ↗</a>
+        {% for dpn, dn in se.dups %}{% if dn.source != n.source %} · <a href="{{ dn.url }}" target="_blank" rel="noopener">{{ dn.source }} ↗</a>{% endif %}{% endfor %}
+        {% if se.dups %}<span class="muted small" title="Số thông báo đăng cho phiên này">({{ se.dups|length + 1 }} tin)</span>{% endif %}</td>
+      <td>{% if links|length > 1 %}
+        <form method="post" action="/p/{{ p.id }}/detach/{{ n.id }}" onsubmit="return confirm('Tách thông báo của phiên này thành tài sản riêng?')">
+          <input type="hidden" name="csrf" value="{{ csrf }}"><button class="link small">Tách</button></form>{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </table></div>
+  <form method="post" action="/p/{{ p.id }}/merge" class="inline small" onsubmit="return confirm('Gộp tài sản này vào tài sản đã nhập?')">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    Cùng một BĐS với tài sản khác? Gộp vào #<input name="target" type="number" min="1" required class="w6">
+    <button class="btn small">Gộp</button>
+  </form>
+</section>
+
+<section class="card" id="tai-lieu">
+  <div class="shead"><h2>Thư mục hình ảnh, video, tài liệu</h2></div>
+  <form method="post" action="/p/{{ p.id }}/files" enctype="multipart/form-data" class="upload">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input type="file" name="files" multiple required>
+    <select name="folder"><option value="">Tự xếp theo loại file</option>
+      {% for fo in FOLDERS %}<option>{{ fo }}</option>{% endfor %}
+      {% for fo in folders.keys() if fo not in FOLDERS and not fo.startswith('Tài liệu nguồn') %}<option>{{ fo }}</option>{% endfor %}
+    </select>
+    <input name="new_folder" placeholder="hoặc thư mục mới" class="w12">
+    <button class="btn primary">Tải lên</button>
+  </form>
+  {% if docs_pending %}<p class="small muted">⏳ Đang lấy tài liệu gốc (quy chế, thông báo…) từ website nguồn – tải lại trang sau ít giây.</p>{% endif %}
+  {% if not folders %}<p class="muted">Chưa có file.</p>{% endif %}
+  {% for folder, fl in folders.items() %}
+  <h3 class="folder">📁 {{ folder }} <span class="muted small">({{ fl|length }})</span></h3>
+  {% set imgs = fl|selectattr('kind', 'equalto', 'image')|list %}
+  {% if imgs %}<div class="gallery">{% for f in imgs %}
+    <a href="/files/{{ f.id }}" target="_blank" title="{{ f.filename }}"><img src="/files/{{ f.id }}?thumb=1" loading="lazy" alt="{{ f.filename }}"></a>
+  {% endfor %}</div>{% endif %}
+  {% for f in fl if f.kind == 'video' %}
+    <div class="video"><video controls preload="metadata" src="/files/{{ f.id }}"></video><div class="small">{{ f.filename }}</div></div>
+  {% endfor %}
+  <table class="tbl small files">
+  {% for f in fl %}
+    <tr><td><a href="/files/{{ f.id }}" target="_blank">{{ f.filename }}</a>{% if f.source_url %} <span class="tag auto">nguồn</span>{% endif %}</td>
+      <td>{{ fmt.size(f.size) }}</td>
+      <td>{{ users[f.uploaded_by].full_name if f.uploaded_by in users else '' }}</td>
+      <td>{{ fmt.dt(f.uploaded_at) }}</td>
+      <td><a href="/files/{{ f.id }}?download=1" class="link">Tải</a></td>
+      <td>{% if not f.source_url and (f.uploaded_by == user.id or user.role == 'admin') %}
+        <form method="post" action="/files/{{ f.id }}/delete" onsubmit="return confirm('Xoá file?')"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="link danger">Xoá</button></form>{% endif %}</td></tr>
+  {% endfor %}
+  </table>
+  {% endfor %}
+</section>
+
+<section class="card" id="nhan-xet">
+  <div class="shead"><h2>Nhận xét <span class="muted small">({{ comments|length }})</span></h2></div>
+  <form method="post" action="/p/{{ p.id }}/comments" class="cform">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <textarea name="body" rows="3" required placeholder="Nhận xét về hiện trạng, pháp lý, giá…"></textarea>
+    <button class="btn primary">Gửi nhận xét</button>
+  </form>
+  {% for c in comments %}
+  <div class="comment">
+    <div class="cmeta"><b>{{ c.user.full_name }}</b> <span class="muted">@{{ c.user.username }}</span> · <span class="muted">{{ fmt.dt(c.created_at) }}{% if c.updated_at %} (sửa {{ fmt.dt(c.updated_at) }}){% endif %}</span>
+      {% if c.user_id == user.id %}<button class="link small" onclick="this.closest('.comment').classList.toggle('editing')">Sửa</button>{% endif %}
+      {% if c.user_id == user.id or user.role == 'admin' %}
+      <form method="post" action="/comments/{{ c.id }}/delete" class="inline" onsubmit="return confirm('Xoá nhận xét?')"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="link small danger">Xoá</button></form>{% endif %}
+    </div>
+    <div class="cbody">{{ c.body }}</div>
+    {% if c.user_id == user.id %}
+    <form method="post" action="/comments/{{ c.id }}/edit" class="cedit"><input type="hidden" name="csrf" value="{{ csrf }}">
+      <textarea name="body" rows="3">{{ c.body }}</textarea><button class="btn small">Lưu</button></form>{% endif %}
+  </div>
+  {% endfor %}
+</section>
+</div>
+
+<aside class="dside">
+  <section class="card">
+    <h2>Phân loại ưu tiên</h2>
+    <form method="post" action="/p/{{ p.id }}/priority" class="prio">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      {% for k, v in PRIORITIES.items() %}
+      <button name="priority" value="{{ k }}" class="pbtn pr{{ k }} {{ 'on' if (p.priority or 0) == k }}">{{ v }}</button>
+      {% endfor %}
+    </form>
+    <h2>Xác thực thông tin</h2>
+    <form method="post" action="/p/{{ p.id }}/verify">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      {% if p.verified %}
+      <p class="small">✓ Đã xác thực bởi <b>{{ users[p.verified_by].full_name if p.verified_by in users else '?' }}</b> lúc {{ fmt.dt(p.verified_at) }}</p>
+      <button class="btn small">Bỏ xác thực</button>
+      {% else %}
+      <p class="small muted">Đánh dấu khi đã đối chiếu diện tích, tờ/thửa, giá với hồ sơ gốc.</p>
+      <button class="btn primary small">✓ Xác thực</button>
+      {% endif %}
+    </form>
+  </section>
+
+  <section class="card" id="giao-viec">
+    <h2>Giao việc</h2>
+    {% for t in tasks %}
+    <div class="task st-{{ t.status }}">
+      <div><b>{{ t.title }}</b></div>
+      <div class="small muted">{{ t.assigner.full_name }} → <b>{{ t.assignee.full_name }}</b>{% if t.due_date %} · hạn {{ fmt.dt(t.due_date) }}{% if t.due_date < today and t.status in ('moi','dang_lam') %} <span class="dl expired">quá hạn</span>{% endif %}{% endif %}</div>
+      {% if t.description %}<div class="small">{{ t.description }}</div>{% endif %}
+      <form method="post" action="/tasks/{{ t.id }}/status" class="inline">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <select name="status" onchange="this.form.submit()" {{ 'disabled' if user.id not in (t.assignee_id, t.assigner_id) and user.role != 'admin' }}>
+          {% for k, v in TASK_STATUS.items() %}<option value="{{ k }}" {{ 'selected' if k == t.status }}>{{ v }}</option>{% endfor %}
+        </select>
+      </form>
+    </div>
+    {% endfor %}
+    <details {{ 'open' if not tasks }}><summary class="btn small">+ Giao việc mới</summary>
+    <form method="post" action="/p/{{ p.id }}/tasks" class="stack">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <input name="title" required placeholder="Việc cần làm (vd: Khảo sát hiện trạng)">
+      <select name="assignee_id" required>
+        {% for u in users.values() if u.active %}<option value="{{ u.id }}" {{ 'selected' if u.id == user.id }}>{{ u.full_name }} (@{{ u.username }})</option>{% endfor %}
+      </select>
+      <label class="small">Hạn hoàn thành<input type="date" name="due_date"></label>
+      <textarea name="description" rows="2" placeholder="Ghi chú (tuỳ chọn)"></textarea>
+      <button class="btn primary">Giao việc</button>
+    </form></details>
+  </section>
+
+  <section class="card">
+    <h2>Lịch sử xem tài liệu</h2>
+    {% if not views %}<p class="small muted">Chưa có lượt xem.</p>{% endif %}
+    <ul class="hist">
+      {% for v, f in views %}
+      <li><b>{{ users[v.user_id].full_name if v.user_id in users else '?' }}</b> {{ 'tải' if v.action == 'download' else 'xem' }} <span title="{{ f.filename }}">{{ f.filename[:40] }}</span><br><span class="muted">{{ fmt.dt(v.viewed_at) }}</span></li>
+      {% endfor %}
+    </ul>
+  </section>
+
+  <section class="card">
+    <h2>Nhật ký thao tác</h2>
+    <ul class="hist">
+      {% for a in acts %}
+      <li><b>{{ a.user.full_name if a.user else 'Hệ thống' }}</b> {{ a.detail }}<br><span class="muted">{{ fmt.dt(a.at) }}</span></li>
+      {% else %}<li class="muted">Chưa có.</li>{% endfor %}
+    </ul>
+  </section>
+</aside>
+</div>
+{% endblock %}

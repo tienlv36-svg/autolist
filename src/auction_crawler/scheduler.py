@@ -16,11 +16,12 @@ log = logging.getLogger(__name__)
 
 def run_once(settings: Settings, repo: Repository) -> None:
     """Một lượt đầy đủ: crawl tăng dần mọi nguồn -> gắn loại TS chính thức (dgts, 14 ngày gần nhất)
-    -> OCR giá (nếu bật) -> đánh dấu tin trùng giữa các nguồn."""
+    -> OCR giá (nếu bật) -> đánh dấu tin trùng giữa các nguồn -> dựng lại tài sản BĐS."""
     from datetime import date, timedelta
 
     from .dedupe import find_duplicates
     from .pipeline import ocr_prices, tag_official_types
+    from .realestate.linker import rebuild
 
     sch = settings.schedule
     for name in all_sources():
@@ -35,6 +36,7 @@ def run_once(settings: Settings, repo: Repository) -> None:
         ("ocr-prices", lambda: ocr_prices("taisancong", settings, repo, limit=int(sch.get("ocr_limit", 0)))
          if int(sch.get("ocr_limit", 0)) > 0 and "taisancong" in all_sources() else None),
         ("dedupe", lambda: find_duplicates(repo)),
+        ("re-build", lambda: rebuild(repo)),          # tài sản BĐS: gom phiên, giá, % giảm
     ]
     for label, fn in steps:
         try:

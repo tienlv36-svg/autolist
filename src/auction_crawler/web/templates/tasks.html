@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Việc của tôi{% endblock %}
+{% block content %}
+<h1>Giao việc</h1>
+<nav class="tabs">
+  <a href="/tasks?scope=assigned&status={{ status }}" class="{{ 'on' if scope == 'assigned' }}">Được giao cho tôi</a>
+  <a href="/tasks?scope=created&status={{ status }}" class="{{ 'on' if scope == 'created' }}">Tôi đã giao</a>
+  {% if user.role == 'admin' %}<a href="/tasks?scope=all&status={{ status }}" class="{{ 'on' if scope == 'all' }}">Tất cả</a>{% endif %}
+  <span class="sp"></span>
+  {% for k, v in [('open','Đang mở')] + TASK_STATUS.items()|list + [('any','Mọi trạng thái')] %}
+  <a href="/tasks?scope={{ scope }}&status={{ k }}" class="{{ 'on' if status == k }} small">{{ v }}</a>
+  {% endfor %}
+</nav>
+<div class="card">
+{% if not tasks %}<p class="muted">Không có việc.</p>{% endif %}
+<div class="tblwrap"><table class="tbl">
+  {% if tasks %}<tr><th>Việc</th><th>Tài sản</th><th>Người giao → nhận</th><th>Hạn</th><th>Trạng thái</th></tr>{% endif %}
+  {% for t in tasks %}
+  <tr>
+    <td><b>{{ t.title }}</b>{% if t.description %}<div class="small muted">{{ t.description }}</div>{% endif %}</td>
+    <td>{% if t.property %}<a href="/p/{{ t.property_id }}">#{{ t.property_id }} {{ t.property.title[:70] }}</a>{% endif %}</td>
+    <td class="small">{{ t.assigner.full_name }} → {{ t.assignee.full_name }}</td>
+    <td>{{ fmt.dt(t.due_date) }}{% if t.due_date and t.due_date < today and t.status in ('moi','dang_lam') %} <span class="dl expired">quá hạn</span>{% endif %}</td>
+    <td><form method="post" action="/tasks/{{ t.id }}/status"><input type="hidden" name="csrf" value="{{ csrf }}">
+      <select name="status" onchange="this.form.submit()">{% for k, v in TASK_STATUS.items() %}<option value="{{ k }}" {{ 'selected' if k == t.status }}>{{ v }}</option>{% endfor %}</select></form></td>
+  </tr>
+  {% endfor %}
+</table></div>
+</div>
+{% endblock %}

@@ -99,6 +99,8 @@ class Repository:
         self.Session = sessionmaker(self.engine, expire_on_commit=False)
 
     def init_db(self) -> None:
+        from .realestate import db as _re_db  # noqa: F401  (đăng ký bảng nghiệp vụ BĐS)
+
         Base.metadata.create_all(self.engine)
         self._add_missing_columns()
 

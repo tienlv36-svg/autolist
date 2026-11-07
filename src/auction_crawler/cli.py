@@ -76,12 +76,13 @@ def crawl(
 
 @app.command()
 def enrich(source: str = typer.Option(..., "--source", "-s"), limit: int = typer.Option(1000, "--limit", "-n"),
-           since: str = typer.Option(None, "--since")):
+           since: str = typer.Option(None, "--since"),
+           realestate: bool = typer.Option(False, "--realestate", help="Chỉ tin BĐS (sau re-build), ưu tiên nhiều phiên")):
     """Tải chi tiết (giá, tiền đặt trước, nơi có TS...) cho tin đã có nhưng chưa có chi tiết."""
     from .pipeline import enrich_missing
 
     s, repo = _setup()
-    st = enrich_missing(source, s, repo, limit=limit, since=_d(since))
+    st = enrich_missing(source, s, repo, limit=limit, since=_d(since), realestate=realestate)
     console.print(f"[green]{source}[/]: xử lý={st.found} cập nhật={st.updated} lỗi={st.errors}")
 
 
@@ -226,6 +227,49 @@ def eval_classify(sample: int = typer.Option(15, "--sample", "-n"), dim: str = t
         console.print(t)
         for r in ss.scalars(select(NoticeRow).where(col == code).order_by(func.random()).limit(sample)):
             console.print(f"[dim]{r.source}[/] {r.title[:150]} [dim]| {(r.asset_owner or '')[:60]}[/]")
+
+
+@app.command("re-build")
+def re_build():
+    """Lọc tin BĐS, trích diện tích/tờ-thửa/phường, gom các phiên đấu giá thành tài sản."""
+    import time
+
+    from .realestate.linker import rebuild
+
+    _, repo = _setup()
+    t = time.time()
+    st = rebuild(repo)
+    console.print(f"BĐS: {st['notices']:,} thông báo -> {st['properties']:,} tài sản "
+                  f"(mới {st['created']:,}, gộp {st['merged']:,}) trong {time.time() - t:.0f}s")
+
+
+@app.command("user-add")
+def user_add(username: str, full_name: str = typer.Option(..., "--name", "-n"),
+             admin: bool = typer.Option(False, "--admin"),
+             password: str = typer.Option(..., prompt=True, hide_input=True, confirmation_prompt=True)):
+    """Tạo tài khoản đăng nhập ứng dụng web (tài khoản đầu tiên nên là --admin)."""
+    from sqlalchemy import select
+
+    from .realestate.db import User
+    from .web.auth import hash_password
+
+    _, repo = _setup()
+    with repo.Session.begin() as s:
+        if s.scalar(select(User).where(User.username == username.lower())):
+            console.print("[red]Tên đăng nhập đã tồn tại[/]")
+            raise typer.Exit(1)
+        s.add(User(username=username.lower(), full_name=full_name, password_hash=hash_password(password),
+                   role="admin" if admin else "member"))
+    console.print(f"[green]Đã tạo[/] {username} ({'quản trị' if admin else 'thành viên'})")
+
+
+@app.command()
+def web(host: str = typer.Option("127.0.0.1"), port: int = typer.Option(8000), reload: bool = False):
+    """Chạy ứng dụng web quản lý tài sản BĐS (mặc định http://127.0.0.1:8000)."""
+    import uvicorn
+
+    _setup()
+    uvicorn.run("auction_crawler.web.app:create_app", factory=True, host=host, port=port, reload=reload)
 
 
 @app.command()
