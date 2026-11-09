@@ -2,6 +2,7 @@
 
 > 🚀 **Cài lên VPS Vietnix + hangdg.com:** [docs/CAI_DAT_HANGDG.md](docs/CAI_DAT_HANGDG.md)
 > · **Cập nhật Đợt 1** (Telegram, Google Drive, khoá SSH): [docs/CAP_NHAT_DOT_1.md](docs/CAP_NHAT_DOT_1.md)
+> · **Quy ước phiên, giá, % giảm, quét lịch sử giá:** [docs/QUY_UOC_GIA_PHIEN.md](docs/QUY_UOC_GIA_PHIEN.md)
 >
 > 📘 **Hướng dẫn chi tiết từng bước** (cài máy chủ, chạy tự động, HTTPS, sao lưu, hướng dẫn sử dụng cho nhân viên):
 > [docs/HUONG_DAN.md](docs/HUONG_DAN.md). **Cài trên VPS (chưa có tên miền):** [docs/HUONG_DAN_VPS.md](docs/HUONG_DAN_VPS.md)

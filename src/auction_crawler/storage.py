@@ -103,6 +103,9 @@ class Repository:
 
         Base.metadata.create_all(self.engine)
         self._add_missing_columns()
+        with self.engine.begin() as c:
+            c.execute(text("UPDATE property_notices SET link_source = CASE WHEN manual THEN 'manual' ELSE 'auto' END "
+                           "WHERE link_source IS NULL"))
 
     def _add_missing_columns(self) -> None:
         """Nâng cấp schema nhẹ: thêm cột mới vào bảng cũ (không cần Alembic cho thay đổi đơn giản)."""

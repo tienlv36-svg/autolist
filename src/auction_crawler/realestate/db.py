@@ -90,6 +90,9 @@ class Property(Base):
     publish_date: Mapped[date | None] = mapped_column(Date, index=True)
     latest_notice_id: Mapped[int | None] = mapped_column(Integer)
     link_warning: Mapped[str | None] = mapped_column(Text)
+    session_hint_max: Mapped[int | None] = mapped_column(Integer)      # "lần N" lớn nhất ghi trong tin
+    history_scanned_at: Mapped[datetime | None] = mapped_column(DateTime)
+    history_note: Mapped[str | None] = mapped_column(Text)              # kết quả lần quét lịch sử gần nhất
     # nghiệp vụ
     priority: Mapped[int] = mapped_column(Integer, default=0, index=True)
     verified: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
@@ -105,6 +108,11 @@ class Property(Base):
         """Giá trị hiệu lực: nhập tay nếu có, không thì tự động."""
         m = getattr(self, f"{name}_manual", None)
         return m if m not in (None, "") else getattr(self, name)
+
+    @property
+    def history_incomplete(self) -> bool:
+        """Tin ghi 'đấu giá lần N' nhưng hệ thống có ít phiên hơn -> phiên 1 trong hệ thống chưa chắc là phiên đầu."""
+        return bool(self.session_hint_max and self.session_hint_max > (self.session_count or 0))
 
     def recompute_discount(self) -> None:
         """% giảm tính từ giá HIỆU LỰC (có tính giá nhập tay); để trống nếu thiếu dữ liệu hoặc có cảnh báo."""
@@ -125,6 +133,7 @@ class PropertyNotice(Base):
     notice_id: Mapped[int] = mapped_column(ForeignKey("notices.id", ondelete="CASCADE"))
     session_no: Mapped[int] = mapped_column(Integer, default=1)
     manual: Mapped[bool] = mapped_column(Boolean, default=False)   # do người dùng gộp/tách -> linker giữ nguyên
+    link_source: Mapped[str] = mapped_column(String(16), default="auto")   # auto | manual | history
     property: Mapped[Property] = relationship(back_populates="links")
     notice: Mapped[NoticeRow] = relationship()
 

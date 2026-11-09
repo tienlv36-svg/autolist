@@ -127,3 +127,16 @@ def test_duplicate_asset_text_not_double_counted():
          "60,6 m2 đất nuôi trồng thủy sản) thuộc thửa đất số 343, tờ bản đồ số 21")
     i = extract(t, t, None, None, [t, "Xã Yên Phong, huyện Yên Mô"])
     assert (i.land_area, i.residential_area, i.other_land_area, i.notes) == (210.6, 150, 60.6, [])
+
+
+@pytest.mark.parametrize("text,n", [
+    ("Quyền sử dụng đất ... tỉnh Lào Cai (Đấu giá lần 3)", 3),
+    ("Tài sản đấu giá (lần 5) là: Quyền sử dụng 210,6 m2 đất", 5),
+    ("Đấu giá lại lần 2 quyền sử dụng đất", 2),
+    ("... tại địa chỉ: Xã Phú Diễn, Thành phố Hà Nội (lần 3)", 3),
+    ("GCN đứng tên bà Lâm, cập nhật biến động lần 01 chuyển mục đích sử dụng", None),
+    ("Thông báo đăng lần 2 về việc đấu giá", None),
+])
+def test_session_hint(text, n):
+    from auction_crawler.realestate.extract import detect_session_hint
+    assert detect_session_hint(text) == n

@@ -9,6 +9,7 @@
 | Nút **⬇ Xuất Excel** trên trang Tài sản (xuất đúng danh sách đang lọc) | Không |
 | fail2ban – tự chặn IP dò mật khẩu SSH | Không |
 | Không cho 2 lượt thu thập chạy chồng nhau | Không |
+| **Quét lịch sử giá** cho tài sản còn hạn đăng ký (tìm phiên cũ, giá phiên đầu, nhịp giảm giá) – tự chạy mỗi ngày 2:00 | Chạy tay 1 lần sau khi cập nhật (cuối Phần A) |
 | **Báo cáo Telegram** sau mỗi lượt 2:00 sáng + cảnh báo khi lỗi | **Phần B** (10 phút) |
 | **Sao lưu lên Google Drive** | **Phần C** (15 phút) |
 | **Đăng nhập VPS bằng khoá SSH**, tắt mật khẩu root | **Phần D** (10 phút) |
@@ -51,6 +52,21 @@ Nếu đã bật lịch tự động trước đó, khởi động lại để n
 ```bash
 sudo systemctl restart auction-scheduler
 ```
+
+**Quét lịch sử giá lần đầu** (bản `first-load.sh` bạn đã chạy chưa có bước này). Chạy trong tmux, khoảng
+4–5 giây mỗi tài sản (1.500 tài sản ≈ 2 giờ):
+
+```bash
+tmux new -s lichsu
+```
+
+```bash
+sudo -u auction /opt/autolist/.venv/bin/auction history-scan -n 1500
+```
+
+(`Ctrl + B` rồi `D` để tách ra.) Kết quả cuối dạng *“Quét 1500 tài sản còn hạn: thêm 420 thông báo cũ cho 95 tài
+sản, lỗi 0”*. Từ hôm sau, lượt 2:00 tự quét tiếp tối đa 500 tài sản/ngày. Quy ước chi tiết:
+[QUY_UOC_GIA_PHIEN.md](QUY_UOC_GIA_PHIEN.md).
 
 **Kiểm tra trên web:** vào https://hangdg.com → menu trên cùng có thêm **Hệ thống** → mở ra thấy 3 khung
 *Dịch vụ & lịch* (3 dịch vụ `active`, *Lượt tiếp theo 02:00 ...*), *Dữ liệu*, *Ổ cứng & sao lưu*.

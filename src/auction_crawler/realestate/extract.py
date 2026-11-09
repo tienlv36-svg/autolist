@@ -301,6 +301,18 @@ def detect_province_strict(*texts: str | None) -> tuple[str | None, str | None]:
     return None, None
 
 
+# ------------------------------------------------------------------ lần đấu giá
+SESSION_HINT_RE = re.compile(r"dau gia\s*(?:lai\s*)?(?:\(\s*)?lan\s*(?:thu\s*)?(\d{1,2})\b|\(\s*lan\s*(?:thu\s*)?(\d{1,2})\s*\)")
+
+
+def detect_session_hint(text: str) -> int | None:
+    """'Đấu giá lần 3', 'đấu giá lại lần 2', 'Tài sản đấu giá (lần 5)', '... (lần 3)' -> số lần lớn nhất.
+    Không nhận 'cập nhật biến động lần 01', 'đăng lần 2'..."""
+    nums = [int(a or b) for a, b in SESSION_HINT_RE.findall(strip_accents(text or ""))]
+    nums = [n for n in nums if 1 <= n <= 30]
+    return max(nums) if nums else None
+
+
 # ------------------------------------------------------------------ tổng hợp
 def extract(title: str, asset_name: str | None = None, address: str | None = None,
             asset_type: str | None = None, extra: list[str] | None = None) -> RealEstateInfo:
@@ -332,7 +344,6 @@ def extract(title: str, asset_name: str | None = None, address: str | None = Non
         if _wards(address or "") or _wards(asset_name or title or ""):
             info.notes.append("Tin nhắc nhiều xã/phường – để trống")
     info.province, info.province_raw = detect_province_strict(address, asset_name, title)
-    if m := re.search(r"\blan\s*(?:thu\s*)?(\d{1,2})\b", strip_accents(title or "")):
-        info.session_hint = int(m.group(1))
+    info.session_hint = detect_session_hint(f"{title} {asset_name or ''}")
     info.has_house = bool(re.search(r"\bnha o\b|can ho|nha xay|tai san gan lien|cong trinh xay dung|biet thu|nha \d+ tang", norm))
     return info

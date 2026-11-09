@@ -11,6 +11,7 @@ cd "$(dirname "$0")/.."
 DAYS="${DAYS:-180}"                 # lấy tin dgts đăng trong N ngày gần nhất
 TSC_PAGES="${TSC_PAGES:-2000}"      # số trang taisancong (20 tin/trang; ~1.800 trang = toàn bộ)
 ENRICH_LIMIT="${ENRICH_LIMIT:-50000}"
+HISTORY_LIMIT="${HISTORY_LIMIT:-1500}"   # số tài sản còn hạn được quét lịch sử ngay lần đầu (~4-5 giây/tài sản)
 SINCE="$(date -d "-${DAYS} days" +%F)"
 A=.venv/bin/auction
 LOG=data/first-load.log
@@ -40,5 +41,6 @@ run enrich -s dgts --realestate -n "$ENRICH_LIMIT"             # 5. giá, tiền
 run enrich -s taisancong --realestate -n "$ENRICH_LIMIT"       # 6. chi tiết taisancong
 run tag-types --since "$SINCE"                                 # 7. loại tài sản chính thức
 run re-build                                                   # 8. tính lại giá phiên 1 / hiện tại / % giảm
+run history-scan -n "$HISTORY_LIMIT"                           # 9. lịch sử giá (phiên cũ) cho tài sản còn hạn đăng ký
 "$A" notify "✅ Lấy dữ liệu lần đầu HOÀN TẤT. Bật lịch tự động: sudo systemctl enable --now auction-scheduler" >/dev/null 2>&1
 echo "[$(date '+%F %T')] HOÀN TẤT. Bật thu thập tự động: sudo systemctl enable --now auction-scheduler" | tee -a "$LOG"

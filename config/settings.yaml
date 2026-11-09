@@ -18,5 +18,6 @@ crawl:
 
 schedule:                        # dùng với lệnh `auction schedule`
   cron: "0 2 * * *"              # mỗi ngày 1 lần lúc 2:00 sáng (giờ Việt Nam)
+  history_limit: 500             # mỗi lượt quét lịch sử giá tối đa N tài sản còn hạn đăng ký (0 = tắt)
   run_on_start: false            # true: chạy ngay 1 lượt mỗi khi dịch vụ khởi động
   ocr_limit: 0                   # >0: mỗi lượt OCR giá từ PDF cho N tin taisancong (cần tesseract)

@@ -180,8 +180,9 @@ def create_app(repo: Repository | None = None, media_root: Path | None = None,
             # gộp các thông báo trùng của cùng một phiên (dgts hay đăng lại) thành 1 dòng
             sessions: list[dict] = []
             for pn, n in links:
-                if sessions and sessions[-1]["no"] == pn.session_no and \
-                        sessions[-1]["n"].starting_price in (None, n.starting_price):
+                if sessions and sessions[-1]["no"] == pn.session_no and (
+                        sessions[-1]["n"].starting_price is None or n.starting_price is None
+                        or sessions[-1]["n"].starting_price == n.starting_price):
                     sessions[-1]["dups"].append((pn, n))
                     if sessions[-1]["n"].starting_price is None and n.starting_price:
                         sessions[-1]["n"] = n
@@ -428,10 +429,12 @@ def create_app(repo: Repository | None = None, media_root: Path | None = None,
                 raise HTTPException(404)
             for other in s.scalars(select(PropertyNotice).where(PropertyNotice.property_id == pid)):
                 other.manual = True   # khoá các thông báo còn lại vào tài sản hiện tại
+                if other.link_source in (None, "auto"):
+                    other.link_source = "manual"
             newp = Property(title=p.title)
             s.add(newp)
             s.flush()
-            pn.property_id, pn.manual = newp.id, True
+            pn.property_id, pn.manual, pn.link_source = newp.id, True, "manual"
             log_act(s, pid, user, "detach", f"Tách thông báo #{nid} thành tài sản #{newp.id}")
             new_id = newp.id
         rebuild(repo)
@@ -450,6 +453,8 @@ def create_app(repo: Repository | None = None, media_root: Path | None = None,
                 return back(f"/p/{pid}")
             for pn in s.scalars(select(PropertyNotice).where(PropertyNotice.property_id.in_([pid, target]))):
                 pn.property_id, pn.manual = target, True
+                if pn.link_source in (None, "auto"):
+                    pn.link_source = "manual"
             log_act(s, target, user, "merge", f"Gộp tài sản #{pid} vào #{target}")
         rebuild(repo)   # chuyển nhận xét/file/việc của #pid sang #target, tính lại phiên & giá
         return back(f"/p/{target}")

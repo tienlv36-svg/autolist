@@ -302,6 +302,20 @@ def telegram_test():
     raise typer.Exit(0 if ok else 1)
 
 
+@app.command("history-scan")
+def history_scan(limit: int = typer.Option(500, "--limit", "-n")):
+    """Quét lịch sử giá (phiên cũ) cho tài sản CÒN HẠN đăng ký, rồi gom phiên lại."""
+    from .realestate.history import scan_open_properties
+    from .realestate.linker import rebuild
+
+    s, repo = _setup()
+    st = scan_open_properties(s, repo, limit=limit)
+    if st.found_notices:
+        rebuild(repo)
+    console.print(f"Quét {st.scanned} tài sản còn hạn: thêm {st.found_notices} thông báo cũ cho "
+                  f"{st.props_updated} tài sản, lỗi {st.errors}")
+
+
 @app.command("run-now")
 def run_now():
     """Chạy ngay một lượt như lịch tự động (thu thập + gom phiên + báo Telegram)."""

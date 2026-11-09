@@ -355,7 +355,7 @@ chiều ngang, chiều dài, xã/phường, địa chỉ.
   có nhãn **nhập tay**, được dùng khi lọc và tính % giảm, và **không bị ghi đè** khi phần mềm cập nhật.
 - *Mô tả đầy đủ trong thông báo gần nhất*: nguyên văn tin và bảng các tài sản trong thông báo.
 
-**Các phiên đấu giá:** mỗi dòng một phiên – ngày đấu giá, hạn đăng ký, giá khởi điểm, % so phiên 1,
+**Các phiên đấu giá** (quy ước đầy đủ: [QUY_UOC_GIA_PHIEN.md](QUY_UOC_GIA_PHIEN.md)): mỗi dòng một phiên – ngày đấu giá, hạn đăng ký, giá khởi điểm, % so phiên 1,
 link mở tin gốc (`dgts ↗` / `taisancong ↗`). “(2 tin)” nghĩa là nguồn đăng 2 thông báo cho cùng phiên.
 
 ### C4. Ưu tiên, xác thực, tài liệu, nhận xét, giao việc

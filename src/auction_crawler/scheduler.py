@@ -88,6 +88,7 @@ def _run_steps(settings: Settings, repo: Repository, report: dict[str, Any]) -> 
          if int(sch.get("ocr_limit", 0)) > 0 and "taisancong" in all_sources() else None),
         ("dedupe", lambda: find_duplicates(repo)),
         ("re-build", lambda: rebuild(repo)),          # tài sản BĐS: gom phiên, giá, % giảm
+        ("history", lambda: _history_then_rebuild(settings, repo, int(sch.get("history_limit", 500)))),
     ]
     for label, fn in steps:
         try:
@@ -96,6 +97,18 @@ def _run_steps(settings: Settings, repo: Repository, report: dict[str, Any]) -> 
         except Exception as e:  # noqa: BLE001
             log.exception("bước %s lỗi", label)
             report["steps"][label] = {"ok": False, "error": repr(e)[:300]}
+
+
+def _history_then_rebuild(settings: Settings, repo: Repository, limit: int):
+    """Quét lịch sử giá cho tài sản còn hạn đăng ký; tìm thấy phiên cũ thì gom phiên lại."""
+    from .realestate.history import scan_open_properties
+    from .realestate.linker import rebuild
+    if limit <= 0:
+        return None
+    st = scan_open_properties(settings, repo, limit=limit)
+    if st.found_notices:
+        rebuild(repo)
+    return st
 
 
 def format_report(settings: Settings, repo: Repository, report: dict[str, Any]) -> str:
@@ -122,6 +135,10 @@ def format_report(settings: Settings, repo: Repository, report: dict[str, Any]) 
     for n, s in steps.items():
         if not s.get("ok"):
             lines.append(f"• bước {esc(n)}: <b>LỖI</b> – {esc(s.get('error'))}")
+    hs = (steps.get("history") or {}).get("result")
+    if hs is not None and getattr(hs, "scanned", 0):
+        lines.append(f"• Lịch sử giá: quét {num(hs.scanned)} tài sản còn hạn, thêm <b>{num(hs.found_notices)}</b> "
+                     f"phiên cũ cho {num(hs.props_updated)} tài sản")
     try:
         with repo.session() as ss:
             total = ss.scalar(select(func.count(Property.id))) or 0

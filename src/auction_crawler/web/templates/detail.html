@@ -17,9 +17,11 @@
   <div class="kpis">
     <div><span class="lbl">Giá hiện tại{% if p.price_latest_manual %} · nhập tay{% endif %}</span><span class="v">{{ fmt.money(p.eff('price_latest')) }}</span>
       <span class="small muted">{{ fmt.money(p.eff('price_latest'), False) }}</span></div>
-    <div><span class="lbl">Giá phiên 1{% if p.price_first_manual %} · nhập tay{% endif %}</span><span class="v">{{ fmt.money(p.eff('price_first')) }}</span></div>
-    <div><span class="lbl">Giảm so phiên 1</span><span class="v {{ 'disc' if p.discount_pct }}">{{ ('−' ~ fmt.num(p.discount_pct) ~ '%') if p.discount_pct else '—' }}</span>
-      <span class="small muted">{{ p.session_count }} phiên</span></div>
+    {% set partial = p.history_incomplete and not p.price_first_manual %}
+    <div><span class="lbl">{{ 'Giá phiên sớm nhất có dữ liệu' if partial else 'Giá phiên 1' }}{% if p.price_first_manual %} · nhập tay{% endif %}</span><span class="v">{{ fmt.money(p.eff('price_first')) }}</span>
+      {% if partial %}<span class="small muted">tin ghi đã đấu giá lần {{ p.session_hint_max }}</span>{% endif %}</div>
+    <div><span class="lbl">Giảm so {{ 'phiên sớm nhất' if partial else 'phiên 1' }}</span><span class="v {{ 'disc' if p.discount_pct }}">{{ ('−' ~ fmt.num(p.discount_pct) ~ '%') if p.discount_pct else '—' }}</span>
+      <span class="small muted">{{ p.session_count }} phiên có dữ liệu</span></div>
     <div><span class="lbl">Hạn đăng ký</span><span class="v">{{ fmt.dt(p.registration_end) }}</span>{{ deadline(p.registration_end) }}</div>
     <div><span class="lbl">Ngày đấu giá</span><span class="v">{{ fmt.dt(p.auction_date) }}</span></div>
     <div><span class="lbl">Tiền đặt trước</span><span class="v">{{ fmt.money(p.deposit_latest) }}</span></div>
@@ -91,14 +93,22 @@
 <section class="card" id="phien">
   <div class="shead"><h2>Các phiên đấu giá</h2></div>
   {% if p.link_warning %}<div class="alert">⚠ {{ p.link_warning }}. Dùng nút “Tách” nếu có thông báo không cùng tài sản.</div>{% endif %}
+  {% if p.history_incomplete %}<div class="notes">Tin ghi tài sản đã đấu giá <b>lần {{ p.session_hint_max }}</b> nhưng hệ thống mới có <b>{{ p.session_count }}</b> phiên –
+    các phiên đầu nằm ngoài dữ liệu đã thu thập{% if p.history_note %} ({{ p.history_note }}){% endif %}. % giảm đang tính so với phiên sớm nhất có dữ liệu;
+    tra cứu giá phiên đầu thật rồi nhập tay ô “Giá phiên 1” nếu cần.</div>
+  {% elif p.history_note %}<p class="small muted">Quét lịch sử: {{ p.history_note }} ({{ fmt.dt(p.history_scanned_at) }})</p>{% endif %}
   <div class="tblwrap"><table class="tbl">
-    <tr><th>Phiên</th><th>Ngày đấu giá</th><th>Hạn đăng ký</th><th class="r">Giá khởi điểm</th><th class="r">So phiên 1</th><th>Nguồn</th><th></th></tr>
+    <tr><th>Phiên</th><th>Ngày đấu giá</th><th>Hạn đăng ký</th><th class="r">Giá khởi điểm</th><th class="r" title="So với phiên trước gần nhất có giá">So phiên trước*</th><th class="r" title="So với giá phiên 1 (hoặc phiên sớm nhất có dữ liệu)">So phiên 1</th><th>Nguồn</th><th></th></tr>
+    {% set base = p.eff('price_first') %}{% set ns = namespace(prev=none) %}
     {% for se in sessions %}{% set pn, n = se.pn, se.n %}
     <tr>
-      <td><b>{{ se.no }}</b>{% if pn.manual %} <span class="tag manual" title="Liên kết thủ công">TC</span>{% endif %}</td>
+      <td><b>{{ se.no }}</b>{% if pn.link_source == 'history' %} <span class="tag auto" title="Tìm được khi quét lịch sử theo từ khoá">lịch sử</span>{% elif pn.link_source == 'manual' %} <span class="tag manual" title="Do người dùng gộp/tách">TC</span>{% endif %}</td>
       <td>{{ fmt.dt(n.auction_date) }}</td><td>{{ fmt.dt(n.registration_end) }}</td>
-      <td class="r">{{ fmt.money(n.starting_price, False) }}</td>
-      <td class="r">{% if n.starting_price and p.price_first and n.starting_price != p.price_first %}{{ '%+.1f'|format((n.starting_price - p.price_first) / p.price_first * 100) }}%{% endif %}</td>
+      {% set sp = n.starting_price if (n.property_count or 1) == 1 else none %}
+      <td class="r">{% if (n.property_count or 1) > 1 %}<span class="muted small" title="Thông báo gồm {{ n.property_count }} tài sản, mỗi tài sản một giá – xem mô tả">nhiều tài sản</span>{% else %}{{ fmt.money(sp, False) }}{% endif %}</td>
+      <td class="r">{% if sp and ns.prev and sp != ns.prev %}{{ '%+.1f'|format((sp - ns.prev) / ns.prev * 100) }}%{% endif %}</td>
+      <td class="r">{% if sp and base and sp != base %}{{ '%+.1f'|format((sp - base) / base * 100) }}%{% endif %}</td>
+      {% if sp %}{% set ns.prev = sp %}{% endif %}
       <td><a href="{{ n.url }}" target="_blank" rel="noopener">{{ n.source }} ↗</a>
         {% for dpn, dn in se.dups %}{% if dn.source != n.source %} · <a href="{{ dn.url }}" target="_blank" rel="noopener">{{ dn.source }} ↗</a>{% endif %}{% endfor %}
         {% if se.dups %}<span class="muted small" title="Số thông báo đăng cho phiên này">({{ se.dups|length + 1 }} tin)</span>{% endif %}</td>
@@ -108,6 +118,7 @@
     </tr>
     {% endfor %}
   </table></div>
+  <p class="small muted">* so với phiên gần nhất phía trên có giá. Phiên “lịch sử”: tìm được khi quét lịch sử theo từ khoá đặc trưng (số giấy chứng nhận, tên chủ, tờ/thửa) và đã kiểm chứng.</p>
   <form method="post" action="/p/{{ p.id }}/merge" class="inline small" onsubmit="return confirm('Gộp tài sản này vào tài sản đã nhập?')">
     <input type="hidden" name="csrf" value="{{ csrf }}">
     Cùng một BĐS với tài sản khác? Gộp vào #<input name="target" type="number" min="1" required class="w6">

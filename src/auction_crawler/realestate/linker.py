@@ -323,6 +323,7 @@ def _apply(s, prop: Property, members: list[Item], pn_all: dict, pn_by_prop: dic
         notes.append("Tin không ghi rõ tỉnh/thành nơi có tài sản")
     prop.auto_notes = list(dict.fromkeys(notes))[:12]
     prop.session_count = len(sessions)
+    prop.session_hint_max = max((m.info.session_hint for m in members if m.info.session_hint), default=None)
     prop.price_first = priced[0][1] if priced and priced[0][0] is sessions[0] else None
     prop.price_latest = priced[-1][1] if priced and priced[-1][0] is latest_g else None
     prop.deposit_latest = priced[-1][2] if priced and priced[-1][0] is latest_g else None
