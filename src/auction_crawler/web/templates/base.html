@@ -13,7 +13,8 @@
   <nav>
     <a href="/" class="{{ 'on' if request.url.path == '/' }}">Tài sản</a>
     <a href="/tasks" class="{{ 'on' if request.url.path.startswith('/tasks') }}">Việc của tôi</a>
-    {% if user.role == 'admin' %}<a href="/admin/users" class="{{ 'on' if request.url.path.startswith('/admin') }}">Tài khoản</a>{% endif %}
+    {% if user.role == 'admin' %}<a href="/admin/users" class="{{ 'on' if request.url.path.startswith('/admin/users') }}">Tài khoản</a>
+    <a href="/admin/system" class="{{ 'on' if request.url.path.startswith('/admin/system') }}">Hệ thống</a>{% endif %}
   </nav>
   <div class="me">
     <a href="/account">{{ user.full_name }}</a>

@@ -11,7 +11,11 @@ from fastapi import HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..realestate.db import User
+from ..realestate.db import LoginAttempt, User
+
+LOCK_WINDOW_MIN = 15      # cửa sổ đếm & thời gian khoá (phút)
+MAX_FAIL_PER_IP = 10      # sai từ 1 IP
+MAX_FAIL_PER_USER = 20    # sai cho 1 tài khoản (từ nhiều IP) - chống dò phân tán
 
 
 def hash_password(pw: str) -> str:
@@ -35,6 +39,35 @@ def authenticate(s: Session, username: str, pw: str) -> User | None:
         u.last_login = datetime.now()
         return u
     return None
+
+
+def login_blocked(s: Session, ip: str, username: str) -> int:
+    """Số phút còn bị khoá (0 = được phép thử). Chỉ đếm lần sai trong 15 phút gần nhất VÀ sau lần
+    đăng nhập đúng gần nhất (của IP / tài khoản đó). Lịch sử vẫn giữ nguyên để xem ở trang Hệ thống."""
+    from datetime import timedelta
+
+    from sqlalchemy import func
+    window = datetime.now() - timedelta(minutes=LOCK_WINDOW_MIN)
+    uname = username.strip().lower()
+    for col, val, limit in ((LoginAttempt.ip, ip, MAX_FAIL_PER_IP), (LoginAttempt.username, uname, MAX_FAIL_PER_USER)):
+        last_ok = s.scalar(select(func.max(LoginAttempt.at)).where(col == val, LoginAttempt.success.is_(True)))
+        since = max(window, last_ok) if last_ok else window
+        n, last = s.execute(select(func.count(), func.max(LoginAttempt.at)).where(
+            col == val, LoginAttempt.success.is_(False), LoginAttempt.at > since)).one()
+        if n >= limit and last:
+            return max(1, LOCK_WINDOW_MIN - int((datetime.now() - last).total_seconds() // 60))
+    return 0
+
+
+def record_login(s: Session, ip: str, username: str, success: bool) -> None:
+    from datetime import timedelta
+    s.add(LoginAttempt(ip=ip[:64], username=username.strip().lower()[:64], success=success))
+    # chỉ dọn bản ghi cũ hơn 30 ngày (giữ lịch sử để theo dõi)
+    s.query(LoginAttempt).filter(LoginAttempt.at < datetime.now() - timedelta(days=30)).delete()
+
+
+def client_ip(request: Request) -> str:
+    return request.client.host if request.client else "?"
 
 
 def csrf_token(request: Request) -> str:

@@ -247,6 +247,71 @@ def re_build():
                   f"(mới {st['created']:,}, gộp {st['merged']:,}) trong {time.time() - t:.0f}s")
 
 
+@app.command("telegram-setup")
+def telegram_setup(token: str = typer.Option(..., "--token", help="Token bot lấy từ @BotFather"),
+                   chat_id: str = typer.Option(None, "--chat-id", help="Bỏ trống để tự tìm nhóm vừa thêm bot")):
+    """Cài thông báo Telegram: kiểm tra token, tìm nhóm chat, lưu cấu hình (data/telegram.json), gửi tin thử."""
+    from .notify import discover_chats, get_me, save_config, send
+
+    s = get_settings()
+    try:
+        me = get_me(token)
+    except Exception as e:  # noqa: BLE001
+        console.print(f"[red]Token không hợp lệ:[/] {e}")
+        raise typer.Exit(1)
+    console.print(f"Bot: [bold]@{me.get('username')}[/]")
+    if not chat_id:
+        chats = discover_chats(token)
+        groups = [c for c in chats if c["type"] in ("group", "supergroup", "channel")] or chats
+        if not groups:
+            console.print("[yellow]Chưa thấy nhóm nào.[/] Thêm bot vào nhóm Telegram, gửi tin [bold]/start[/] trong nhóm, "
+                          "rồi chạy lại lệnh này.")
+            raise typer.Exit(1)
+        if len(groups) > 1:
+            console.print("Bot đang ở nhiều cuộc trò chuyện – chạy lại kèm --chat-id <ID>:")
+            for c in groups:
+                console.print(f"  {c['id']:>16}  {c['type']:<10} {c['name']}")
+            raise typer.Exit(1)
+        chat_id = groups[0]["id"]
+        console.print(f"Nhóm: [bold]{groups[0]['name']}[/] (id {chat_id})")
+    p = save_config(s, token, chat_id)
+    if send(s, "✅ <b>Đấu giá BĐS</b>: đã kết nối thông báo Telegram. Báo cáo sẽ gửi sau mỗi lượt thu thập."):
+        console.print(f"[green]Đã lưu cấu hình ({p}) và gửi tin thử vào nhóm.[/]")
+    else:
+        console.print("[red]Đã lưu cấu hình nhưng gửi tin thử lỗi[/] – kiểm tra bot còn trong nhóm.")
+        raise typer.Exit(1)
+
+
+@app.command()
+def notify(text: str = typer.Argument(..., help="Nội dung (cho phép thẻ HTML <b>, <i>)")):
+    """Gửi một tin nhắn Telegram (dùng trong script, vd sao lưu)."""
+    from .notify import send
+
+    if not send(get_settings(), text):
+        console.print("[yellow]Chưa cấu hình Telegram hoặc gửi lỗi[/]")
+        raise typer.Exit(1)
+
+
+@app.command("telegram-test")
+def telegram_test():
+    """Gửi tin thử tới nhóm Telegram đã cấu hình."""
+    from .notify import send
+
+    ok = send(get_settings(), "🔔 Tin thử từ <b>Đấu giá BĐS</b> – thông báo hoạt động bình thường.")
+    console.print("[green]Đã gửi[/]" if ok else "[red]Chưa cấu hình hoặc gửi lỗi[/]")
+    raise typer.Exit(0 if ok else 1)
+
+
+@app.command("run-now")
+def run_now():
+    """Chạy ngay một lượt như lịch tự động (thu thập + gom phiên + báo Telegram)."""
+    from .scheduler import run_once
+
+    s, repo = _setup()
+    rep = run_once(s, repo)
+    console.print(rep["text"])
+
+
 @app.command("user-add")
 def user_add(username: str, full_name: str = typer.Option(..., "--name", "-n"),
              admin: bool = typer.Option(False, "--admin"),
@@ -273,7 +338,9 @@ def web(host: str = typer.Option("127.0.0.1"), port: int = typer.Option(8000), r
     import uvicorn
 
     _setup()
-    uvicorn.run("auction_crawler.web.app:create_app", factory=True, host=host, port=port, reload=reload)
+    # proxy_headers: lấy IP thật của người dùng từ Caddy (chỉ tin proxy chạy trên cùng máy)
+    uvicorn.run("auction_crawler.web.app:create_app", factory=True, host=host, port=port, reload=reload,
+                proxy_headers=True, forwarded_allow_ips="127.0.0.1")
 
 
 @app.command()

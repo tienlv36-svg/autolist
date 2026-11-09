@@ -1,25 +1,70 @@
-"""Lập lịch chạy định kỳ bằng APScheduler (có thể thay bằng cron hệ thống / systemd timer)."""
+"""Lập lịch chạy định kỳ bằng APScheduler + báo cáo qua Telegram."""
 from __future__ import annotations
 
+import fcntl
 import logging
-from datetime import datetime
+import time
+from contextlib import contextmanager
+from datetime import date, datetime, timedelta
+from typing import Any, Iterator
 
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 from .config import Settings
+from .notify import disk_usage_pct, esc, send
 from .pipeline import crawl_source
 from .sources import all_sources
 from .storage import Repository
 
 log = logging.getLogger(__name__)
+DISK_WARN_PCT = 85
 
 
-def run_once(settings: Settings, repo: Repository) -> None:
+def num(n: int | None) -> str:
+    """1234567 -> '1.234.567' (kiểu Việt Nam)."""
+    return f"{n or 0:,}".replace(",", ".")
+
+
+class AlreadyRunning(RuntimeError):
+    pass
+
+
+@contextmanager
+def run_lock(settings: Settings) -> Iterator[None]:
+    """Khoá dùng chung với deploy/first-load.sh (data/.run.lock): không cho 2 lượt ghi CSDL cùng lúc."""
+    p = settings.path("data/.run.lock")
+    p.parent.mkdir(parents=True, exist_ok=True)
+    with p.open("w") as f:
+        try:
+            fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as e:
+            raise AlreadyRunning("Đang có tiến trình thu thập khác chạy (vd first-load.sh)") from e
+        try:
+            yield
+        finally:
+            fcntl.flock(f, fcntl.LOCK_UN)
+
+
+def run_once(settings: Settings, repo: Repository) -> dict[str, Any]:
     """Một lượt đầy đủ: crawl tăng dần mọi nguồn -> gắn loại TS chính thức (dgts, 14 ngày gần nhất)
-    -> OCR giá (nếu bật) -> đánh dấu tin trùng giữa các nguồn -> dựng lại tài sản BĐS."""
-    from datetime import date, timedelta
+    -> OCR giá (nếu bật) -> đánh dấu tin trùng giữa các nguồn -> dựng lại tài sản BĐS -> báo Telegram."""
+    t0 = time.time()
+    started = datetime.now()
+    report: dict[str, Any] = {"sources": {}, "steps": {}, "warnings": [], "started": started}
+    try:
+        with run_lock(settings):
+            _run_steps(settings, repo, report)
+    except AlreadyRunning as e:
+        report["warnings"].append(str(e) + " – bỏ qua lượt này")
+        log.warning("%s", e)
+    report["minutes"] = round((time.time() - t0) / 60, 1)
+    report["text"] = format_report(settings, repo, report)
+    send(settings, report["text"])
+    return report
 
+
+def _run_steps(settings: Settings, repo: Repository, report: dict[str, Any]) -> None:
     from .dedupe import find_duplicates
     from .pipeline import ocr_prices, tag_official_types
     from .realestate.linker import rebuild
@@ -28,9 +73,14 @@ def run_once(settings: Settings, repo: Repository) -> None:
     for name in all_sources():
         try:
             st = crawl_source(name, settings, repo)
+            report["sources"][name] = {"ok": True, "found": st.found, "inserted": st.inserted,
+                                       "updated": st.updated, "errors": st.errors}
             log.info("[%s] xong: mới=%s cập nhật=%s lỗi=%s", name, st.inserted, st.updated, st.errors)
-        except Exception:
+            if st.found == 0:
+                report["warnings"].append(f"{name}: không đọc được tin nào – website có thể đã đổi cấu trúc")
+        except Exception as e:  # noqa: BLE001
             log.exception("[%s] lỗi", name)
+            report["sources"][name] = {"ok": False, "error": repr(e)[:300]}
     steps = [
         ("tag-types", lambda: tag_official_types(settings, repo, since=date.today() - timedelta(days=14))
          if "dgts" in all_sources() else None),
@@ -41,9 +91,69 @@ def run_once(settings: Settings, repo: Repository) -> None:
     ]
     for label, fn in steps:
         try:
-            fn()
-        except Exception:
+            res = fn()
+            report["steps"][label] = {"ok": True, "result": res}
+        except Exception as e:  # noqa: BLE001
             log.exception("bước %s lỗi", label)
+            report["steps"][label] = {"ok": False, "error": repr(e)[:300]}
+
+
+def format_report(settings: Settings, repo: Repository, report: dict[str, Any]) -> str:
+    from sqlalchemy import func, select
+
+    from .realestate.db import Property
+
+    srcs, steps, warns = report["sources"], report["steps"], list(report["warnings"])
+    failed = [n for n, s in srcs.items() if not s.get("ok")] + [n for n, s in steps.items() if not s.get("ok")]
+    try:
+        pct = disk_usage_pct(settings.path("data"))
+        if pct >= DISK_WARN_PCT:
+            warns.append(f"Ổ cứng đã dùng {pct}% – cần dọn bớt hoặc nâng dung lượng")
+    except OSError:
+        pct = None
+    icon = "❌" if failed else ("⚠️" if warns else "✅")
+    lines = [f"{icon} <b>Thu thập {report['started']:%H:%M %d/%m}</b> ({report.get('minutes', 0)} phút)"]
+    for n, s in srcs.items():
+        if s.get("ok"):
+            lines.append(f"• {esc(n)}: <b>{num(s['inserted'])}</b> tin mới, {num(s['updated'])} cập nhật"
+                         + (f", {s['errors']} lỗi" if s["errors"] else ""))
+        else:
+            lines.append(f"• {esc(n)}: <b>THẤT BẠI</b> – {esc(s.get('error'))}")
+    for n, s in steps.items():
+        if not s.get("ok"):
+            lines.append(f"• bước {esc(n)}: <b>LỖI</b> – {esc(s.get('error'))}")
+    try:
+        with repo.session() as ss:
+            total = ss.scalar(select(func.count(Property.id))) or 0
+            new = ss.scalar(select(func.count(Property.id)).where(Property.created_at >= report["started"])) or 0
+        if srcs:
+            lines.append(f"• Tài sản BĐS: {num(total)} (<b>+{num(new)}</b> mới)")
+    except Exception:  # noqa: BLE001
+        pass
+    if pct is not None:
+        lines.append(f"• Ổ cứng: {pct}% đã dùng")
+    bk = last_backup(settings)
+    if bk is None:
+        warns.append("Chưa có bản sao lưu nào")
+    else:
+        where = "VPS + Google Drive" if bk.get("offsite") else "chỉ trên VPS"
+        lines.append(f"• Sao lưu gần nhất: {esc(bk.get('at', '?'))} ({esc(bk.get('size', '?'))}, {where})")
+        try:
+            if datetime.now() - datetime.strptime(bk["at"], "%Y-%m-%d %H:%M:%S") > timedelta(days=2):
+                warns.append("Sao lưu gần nhất đã quá 2 ngày – kiểm tra lịch sao lưu")
+        except (KeyError, ValueError):
+            pass
+    lines += [f"⚠️ {esc(w)}" for w in warns]
+    return "\n".join(lines)
+
+
+def last_backup(settings: Settings) -> dict[str, Any] | None:
+    import json
+    p = settings.path("data/.last_backup.json")
+    try:
+        return json.loads(p.read_text()) if p.exists() else None
+    except (OSError, ValueError):
+        return None
 
 
 def run_scheduler(settings: Settings, repo: Repository, cron: str) -> None:
@@ -54,5 +164,6 @@ def run_scheduler(settings: Settings, repo: Repository, cron: str) -> None:
     if settings.schedule.get("run_on_start", False):
         run_once(settings, repo)
     job = sched.get_job("crawl_all")
-    log.info("Lượt chạy tiếp theo: %s", getattr(job, "next_run_time", None) or job.trigger.get_next_fire_time(None, datetime.now(job.trigger.timezone)))
+    log.info("Lượt chạy tiếp theo: %s", getattr(job, "next_run_time", None)
+             or job.trigger.get_next_fire_time(None, datetime.now(job.trigger.timezone)))
     sched.start()

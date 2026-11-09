@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Hệ thống{% endblock %}
+{% block main_class %}wrap wide{% endblock %}
+{% block content %}
+<h1>Hệ thống</h1>
+{% if msg %}<div class="alert info">{{ msg }}</div>{% endif %}
+<div class="sysgrid">
+  <section class="card">
+    <h2>Dịch vụ & lịch</h2>
+    <dl class="kv">
+      {% for n, v in st.services.items() %}<dt>{{ n }}</dt><dd><span class="dl {{ 'ok' if v == 'active' else ('unknown' if v == '?' else 'expired') }}">{{ v }}</span></dd>{% endfor %}
+      <dt>Lịch thu thập</dt><dd><code>{{ st.cron }}</code></dd>
+      <dt>Lượt tiếp theo</dt><dd>{{ fmt.dt(st.next_run.replace(tzinfo=None) if st.next_run else None) }}</dd>
+      <dt>Telegram</dt><dd>{% if st.telegram %}<span class="dl ok">đã cấu hình</span>
+        <form method="post" action="/admin/system/telegram-test" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn small">Gửi thử</button></form>
+        {% else %}<span class="dl soon">chưa cấu hình</span> <span class="small muted">(xem hướng dẫn cập nhật Đợt 1)</span>{% endif %}</dd>
+    </dl>
+  </section>
+  <section class="card">
+    <h2>Dữ liệu</h2>
+    <dl class="kv">
+      {% for src, n, priced in st.notices %}<dt>Tin {{ src }}</dt><dd>{{ '{:,}'.format(n).replace(',', '.') }} <span class="muted small">({{ '{:,}'.format(priced).replace(',', '.') }} có giá)</span></dd>{% endfor %}
+      <dt>Tài sản BĐS</dt><dd>{{ '{:,}'.format(st.props[0]).replace(',', '.') }} <span class="muted small">({{ st.props[1] }} có giá, {{ st.props[3] }} có % giảm, {{ st.props[2] or 0 }} đã xác thực)</span></dd>
+      <dt>CSDL</dt><dd>{{ fmt.size(st.db_size) or '—' }}</dd>
+      <dt>File tải lên</dt><dd>{{ fmt.size(st.media_size) or '0 B' }}</dd>
+    </dl>
+  </section>
+  <section class="card">
+    <h2>Ổ cứng & sao lưu</h2>
+    {% if st.disk %}
+    <div class="bar"><span style="width: {{ st.disk.pct }}%" class="{{ 'warn' if st.disk.pct >= 85 }}"></span></div>
+    <p class="small">{{ st.disk.pct }}% đã dùng – còn trống {{ fmt.size(st.disk.free) }} / {{ fmt.size(st.disk.total) }}</p>
+    {% endif %}
+    <p class="small"><b>{{ st.backup_count }}</b> bản sao lưu trên VPS{% if not st.backups %} – <span class="dl soon">chưa có bản nào</span>{% endif %}</p>
+    <ul class="hist">{% for b in st.backups %}<li>{{ b.name }} · {{ fmt.size(b.size) }} · {{ fmt.dt(b.at) }}</li>{% endfor %}</ul>
+  </section>
+</div>
+
+<section class="card">
+  <h2>Các lượt thu thập gần nhất</h2>
+  <div class="tblwrap"><table class="tbl small">
+    <tr><th>Nguồn</th><th>Bắt đầu</th><th>Kết thúc</th><th>Trạng thái</th><th class="r">Trang</th><th class="r">Thấy</th><th class="r">Mới</th><th class="r">Cập nhật</th><th class="r">Lỗi</th><th>Ghi chú</th></tr>
+    {% for r in st.runs %}
+    <tr><td>{{ r.source }}</td><td>{{ fmt.dt(r.started_at) }}</td><td>{{ fmt.dt(r.finished_at) }}</td>
+      <td><span class="dl {{ 'ok' if r.status == 'ok' else ('soon' if r.status == 'running' else 'expired') }}">{{ r.status }}</span></td>
+      <td class="r">{{ r.pages }}</td><td class="r">{{ r.found }}</td><td class="r">{{ r.inserted }}</td><td class="r">{{ r.updated }}</td><td class="r">{{ r.errors }}</td>
+      <td class="muted">{{ (r.message or '')[:120] }}</td></tr>
+    {% else %}<tr><td colspan="10" class="muted">Chưa có lượt nào.</td></tr>{% endfor %}
+  </table></div>
+  {% if st.first_load_tail %}<details class="desc"><summary>Nhật ký lấy dữ liệu lần đầu (6 dòng cuối)</summary><pre class="small">{{ st.first_load_tail|join('\n') }}</pre></details>{% endif %}
+</section>
+
+<section class="card">
+  <h2>Đăng nhập sai 24 giờ qua</h2>
+  {% if not st.failed_logins %}<p class="small muted">Không có.</p>{% else %}
+  <table class="tbl small"><tr><th>IP</th><th class="r">Số lần</th><th>Gần nhất</th><th>Tên đã thử</th></tr>
+    {% for ip, n, last, names in st.failed_logins %}<tr><td>{{ ip }}</td><td class="r">{{ n }}</td><td>{{ fmt.dt(last) }}</td><td>{{ names }}</td></tr>{% endfor %}
+  </table>
+  <p class="small muted">Một IP sai 10 lần trong 15 phút sẽ bị khoá đăng nhập 15 phút.</p>{% endif %}
+</section>
+{% endblock %}

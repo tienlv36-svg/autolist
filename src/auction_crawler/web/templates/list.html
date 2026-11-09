@@ -68,7 +68,8 @@
 
 <section class="results">
   <div class="rhead">
-    <div><strong>{{ '{:,}'.format(total).replace(',', '.') }}</strong> tài sản</div>
+    <div><strong>{{ '{:,}'.format(total).replace(',', '.') }}</strong> tài sản
+      {% if total %}<a class="btn small" href="/export.xlsx?{{ base_qs }}" title="Xuất danh sách đang lọc (tối đa 20.000 dòng)">⬇ Xuất Excel</a>{% endif %}</div>
     <label class="sort">Sắp xếp
       <select name="sort" form="filters" onchange="this.form.submit()">
         {% for k, (lbl, _) in SORTS.items() %}<option value="{{ k }}" {{ 'selected' if k == f.sort }}>{{ lbl }}</option>{% endfor %}

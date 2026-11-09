@@ -15,7 +15,7 @@
 #   5. Tạo dịch vụ web + thu thập tự động (systemd), sao lưu hằng đêm
 #   6. Caddy: HTTPS thật cho tên miền (Let's Encrypt) nếu DNS đã trỏ về VPS;
 #      ngược lại HTTPS trên địa chỉ IP (chứng chỉ tự ký) -> https://<IP>
-#   7. Tường lửa: chỉ mở SSH, 80, 443
+#   7. Tường lửa: chỉ mở SSH, 80, 443; fail2ban chặn IP dò mật khẩu SSH
 #   8. Tạo tài khoản quản trị web
 # =============================================================================
 set -euo pipefail
@@ -36,7 +36,9 @@ step "1/8 Cài gói hệ thống"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -q
 apt-get install -y -q git python3 python3-venv python3-pip tmux curl ufw \
-    tesseract-ocr tesseract-ocr-vie poppler-utils sqlite3 cron >/dev/null
+    tesseract-ocr tesseract-ocr-vie poppler-utils sqlite3 cron rclone fail2ban >/dev/null
+# fail2ban: chặn IP dò mật khẩu SSH (cấu hình mặc định của Ubuntu đã bật bảo vệ sshd)
+systemctl enable --now fail2ban >/dev/null 2>&1 || true
 if ! command -v caddy >/dev/null; then
   apt-get install -y -q caddy >/dev/null 2>&1 || echo "  (!) Không cài được caddy từ kho Ubuntu – xem https://caddyserver.com/docs/install"
 fi
@@ -136,6 +138,7 @@ step "7/8 Tường lửa"
 if [ "$HAS_SYSTEMD" = 1 ]; then
   ufw allow OpenSSH >/dev/null && ufw allow 80/tcp >/dev/null && ufw allow 443/tcp >/dev/null
   ufw --force enable >/dev/null && ufw status | head -8
+  echo "  fail2ban: $(systemctl is-active fail2ban 2>/dev/null)"
 fi
 
 step "8/8 Tài khoản quản trị web"

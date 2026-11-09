@@ -161,3 +161,55 @@ def test_sort_param_not_duplicated(env):
     login(c)
     page = c.get("/?sort=gia_giam").text
     assert page.count('name="sort"') == 1 and 'value="gia_giam" selected' in page
+
+
+def test_login_rate_limit(env):
+    from auction_crawler.web import auth
+    _, c = env
+    for _ in range(auth.MAX_FAIL_PER_IP):
+        assert "Sai tên đăng nhập" in c.post("/login", data={"username": "admin", "password": "sai"}).text
+    r = c.post("/login", data={"username": "admin", "password": "matkhau123"})
+    assert "quá nhiều lần" in r.text           # bị khoá dù lần này đúng mật khẩu
+    assert c.get("/", follow_redirects=False).status_code == 303
+
+
+def test_successful_login_clears_failures(env):
+    _, c = env
+    for _ in range(5):
+        c.post("/login", data={"username": "admin", "password": "sai"})
+    login(c)
+    for _ in range(5):
+        c.post("/login", data={"username": "nv1", "password": "sai"})
+    login(c, "nv1")                              # 5 + 5 sai nhưng đã reset sau lần đúng -> không bị khoá
+
+
+def test_export_xlsx_respects_filters(env):
+    from io import BytesIO
+
+    from openpyxl import load_workbook
+    _, c = env
+    login(c)
+    r = c.get("/export.xlsx?sale_form=cho_thue")
+    assert r.status_code == 200 and "spreadsheetml" in r.headers["content-type"]
+    ws = load_workbook(BytesIO(r.content)).active
+    assert ws.max_row == 2 and ws["C2"].value == "Cho thuê" and ws.cell(2, ws.max_column).value.endswith(f"/p/{ws['A2'].value}")
+    assert "Xuất Excel" in c.get("/").text
+
+
+def test_system_page_admin_only(env):
+    _, c = env
+    login(c)
+    page = c.get("/admin/system").text
+    assert "Các lượt thu thập gần nhất" in page and "Telegram" in page and "chưa cấu hình" in page
+    c.post("/logout")
+    login(c, "nv1")
+    assert c.get("/admin/system").status_code == 403
+
+
+def test_failed_logins_kept_for_audit(env):
+    _, c = env
+    for _ in range(3):
+        c.post("/login", data={"username": "admin", "password": "sai"})
+    login(c)
+    page = c.get("/admin/system").text
+    assert "Đăng nhập sai 24 giờ qua" in page and "testclient" in page    # IP của TestClient

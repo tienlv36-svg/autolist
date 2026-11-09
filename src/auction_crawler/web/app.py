@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
@@ -24,13 +24,14 @@ from ..storage import AssetRow, NoticeRow, Repository
 from ..normalize import PROVINCE_MERGE, parse_vnd
 from ..realestate.extract import parse_number
 from . import fmt
-from .auth import LoginRequired, authenticate, check_csrf, csrf_token, current_user, hash_password, load_secret
+from .auth import LoginRequired, authenticate, client_ip, login_blocked, record_login, check_csrf, csrf_token, current_user, hash_password, load_secret
 from .queries import SORTS, Filters, build_query
 from .sourcedocs import needs_sync, sync_source_docs
 
 log = logging.getLogger(__name__)
 HERE = Path(__file__).parent
 PAGE_SIZE = 30
+EXPORT_MAX = 20000
 MAX_UPLOAD = 1024 * 1024 * 1024  # 1 GB / file
 FOLDERS = ["Hình ảnh", "Video", "Pháp lý", "Hiện trạng", "Định giá", "Tài liệu"]
 
@@ -79,9 +80,16 @@ def create_app(repo: Repository | None = None, media_root: Path | None = None,
 
     @app.post("/login")
     def login(request: Request, username: str = Form(...), password: str = Form(...), next: str = Form("/")):
+        ip = client_ip(request)
         with repo.Session.begin() as s:
+            if (mins := login_blocked(s, ip, username)):
+                log.warning("Chặn đăng nhập: ip=%s user=%s (còn %s phút)", ip, username, mins)
+                return render(request, "login.html", None, next=next,
+                              error=f"Đăng nhập sai quá nhiều lần. Vui lòng thử lại sau {mins} phút.")
             u = authenticate(s, username, password)
+            record_login(s, ip, username, bool(u))
             if not u:
+                log.warning("Đăng nhập sai: ip=%s user=%s", ip, username)
                 return render(request, "login.html", None, next=next, error="Sai tên đăng nhập hoặc mật khẩu")
             request.session.clear()
             request.session["uid"] = u.id
@@ -445,6 +453,39 @@ def create_app(repo: Repository | None = None, media_root: Path | None = None,
             log_act(s, target, user, "merge", f"Gộp tài sản #{pid} vào #{target}")
         rebuild(repo)   # chuyển nhận xét/file/việc của #pid sang #target, tính lại phiên & giá
         return back(f"/p/{target}")
+
+    # ------------------------------------------------------------------ xuất Excel theo bộ lọc
+    @app.get("/export.xlsx")
+    def export_xlsx(request: Request):
+        from .export import properties_xlsx
+        f = Filters.from_request(request.query_params)
+        with repo.session() as s:
+            user = current_user(request, s)
+            items = s.scalars(build_query(f, user.id).limit(EXPORT_MAX)).all()
+            data = properties_xlsx(items, base_url=str(request.base_url).rstrip("/"))
+            log_act(s, None, user, "export", f"Xuất Excel {len(items)} tài sản")
+            s.commit()
+        name = f"tai_san_dau_gia_{datetime.now():%Y%m%d_%H%M}.xlsx"
+        return Response(data, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        headers={"Content-Disposition": f'attachment; filename="{name}"'})
+
+    # ------------------------------------------------------------------ trang hệ thống (quản trị)
+    @app.get("/admin/system", response_class=HTMLResponse)
+    def system_page(request: Request, msg: str = ""):
+        from .system import system_status
+        with repo.session() as s:
+            user = _admin(request, s)
+            st = system_status(s, settings, media_root)
+            return render(request, "system.html", user, st=st, msg=msg)
+
+    @app.post("/admin/system/telegram-test")
+    def system_telegram_test(request: Request, csrf: str = Form("")):
+        check_csrf(request, csrf)
+        from ..notify import send
+        with repo.session() as s:
+            user = _admin(request, s)
+        ok = send(settings, f"🔔 Tin thử từ trang Hệ thống (người gửi: {user.full_name})")
+        return back("/admin/system?msg=" + ("Đã gửi tin thử Telegram" if ok else "Gửi lỗi hoặc chưa cấu hình Telegram"))
 
     # ------------------------------------------------------------------ quản trị tài khoản
     def _admin(request, s) -> User:

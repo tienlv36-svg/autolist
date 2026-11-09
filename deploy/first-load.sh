@@ -14,6 +14,9 @@ ENRICH_LIMIT="${ENRICH_LIMIT:-50000}"
 SINCE="$(date -d "-${DAYS} days" +%F)"
 A=.venv/bin/auction
 LOG=data/first-load.log
+# khoá chung với lịch tự động (auction schedule): không cho 2 tiến trình ghi CSDL cùng lúc
+exec 9>data/.run.lock
+flock -n 9 || { echo "Đang có tiến trình thu thập khác chạy (lịch tự động hoặc first-load khác). Thử lại sau."; exit 1; }
 run() {
   echo "[$(date '+%F %T')] >>> $*" | tee -a "$LOG"
   # ghi đầy đủ tiến độ (từng trang) vào nhật ký để theo dõi bằng: tail -f data/first-load.log
@@ -24,7 +27,8 @@ run() {
 }
 must() {   # bước bắt buộc: lỗi thì dừng
   run "$@" || { echo "[$(date '+%F %T')] DỪNG: bước '$*' lỗi. Kiểm tra mạng tới dgts.moj.gov.vn / taisancong.vn" \
-                "(curl -I https://dgts.moj.gov.vn) rồi chạy lại script." | tee -a "$LOG"; exit 1; }
+                "(curl -I https://dgts.moj.gov.vn) rồi chạy lại script." | tee -a "$LOG"
+                "$A" notify "❌ Lấy dữ liệu lần đầu DỪNG ở bước: $*" >/dev/null 2>&1; exit 1; }
 }
 
 echo "Lấy dữ liệu từ $SINCE | nhật ký: $LOG" | tee -a "$LOG"
@@ -36,4 +40,5 @@ run enrich -s dgts --realestate -n "$ENRICH_LIMIT"             # 5. giá, tiền
 run enrich -s taisancong --realestate -n "$ENRICH_LIMIT"       # 6. chi tiết taisancong
 run tag-types --since "$SINCE"                                 # 7. loại tài sản chính thức
 run re-build                                                   # 8. tính lại giá phiên 1 / hiện tại / % giảm
+"$A" notify "✅ Lấy dữ liệu lần đầu HOÀN TẤT. Bật lịch tự động: sudo systemctl enable --now auction-scheduler" >/dev/null 2>&1
 echo "[$(date '+%F %T')] HOÀN TẤT. Bật thu thập tự động: sudo systemctl enable --now auction-scheduler" | tee -a "$LOG"

@@ -184,6 +184,16 @@ class Task(Base):
     property: Mapped[Property | None] = relationship()
 
 
+class LoginAttempt(Base):
+    """Lần thử đăng nhập - dùng để khoá tạm khi dò mật khẩu."""
+    __tablename__ = "login_attempts"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    ip: Mapped[str] = mapped_column(String(64), index=True)
+    username: Mapped[str] = mapped_column(String(64), index=True)
+    success: Mapped[bool] = mapped_column(Boolean, default=False)
+    at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, index=True)
+
+
 class Activity(Base):
     """Nhật ký thao tác (sửa trường, đổi ưu tiên, xác thực, gộp/tách phiên...)."""
     __tablename__ = "activities"
