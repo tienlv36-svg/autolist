@@ -213,3 +213,14 @@ def test_failed_logins_kept_for_audit(env):
     login(c)
     page = c.get("/admin/system").text
     assert "Đăng nhập sai 24 giờ qua" in page and "testclient" in page    # IP của TestClient
+
+
+def test_users_page_row_forms(env):
+    repo, c = env
+    login(c)
+    page = c.get("/admin/users").text
+    with repo.session() as s:
+        nv1 = s.query(User).filter_by(username="nv1").one().id
+    assert f'<form method="post" action="/admin/users/{nv1}" id="u{nv1}">' in page
+    assert f'name="role" form="u{nv1}"' in page and 'data-label="Quyền"' in page
+    assert "<tr><form" not in page      # không còn form lồng sai trong <tr>
