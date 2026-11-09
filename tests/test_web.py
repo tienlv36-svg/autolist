@@ -154,3 +154,10 @@ def test_secure_cookie_when_domain(env, monkeypatch, tmp_path):
     c = TestClient(create_app(repo, media_root=tmp_path / "m2", sync_docs=False), base_url="https://testserver")
     r = c.post("/login", data={"username": "admin", "password": "matkhau123", "next": "/"}, follow_redirects=False)
     assert r.status_code == 303 and "secure" in r.headers["set-cookie"].lower()
+
+
+def test_sort_param_not_duplicated(env):
+    _, c = env
+    login(c)
+    page = c.get("/?sort=gia_giam").text
+    assert page.count('name="sort"') == 1 and 'value="gia_giam" selected' in page
