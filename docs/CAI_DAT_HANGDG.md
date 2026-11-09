@@ -193,6 +193,9 @@ root@vps-xxxx:~#
 
 ## Phần 4 – Kiểm tra VPS (1 lệnh)
 
+> Bản Ubuntu rút gọn của Vietnix chưa có `curl`. Nếu lệnh dưới báo `curl: command not found` → làm **Phần 5**
+> trước (có cài `curl`), rồi quay lại chạy lệnh kiểm tra này.
+
 ```bash
 grep PRETTY_NAME /etc/os-release; ss -ltnp | grep -E ':(80|443) ' || echo "CONG 80/443: TRONG - OK"; curl -s -o /dev/null -w "dgts: %{http_code}\n" https://dgts.moj.gov.vn; curl -s -o /dev/null -w "taisancong: %{http_code}\n" https://taisancong.vn; free -h | grep Mem; df -h / | tail -1
 ```
@@ -223,8 +226,11 @@ Mem:           3.8Gi       ...
 Lệnh dưới đây cập nhật **không bật hộp thoại hỏi** (tự chọn phương án an toàn):
 
 ```bash
-export DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a; apt-get update && apt-get -y -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold upgrade
+export DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a; apt-get update && apt-get -y -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold upgrade && apt-get install -y curl git
 ```
+
+(Bản Ubuntu của Vietnix là bản **rút gọn** – khi đăng nhập có dòng *“This system has been minimized”* – nên
+lệnh trên cài thêm `curl` và `git` cần cho các bước sau.)
 
 Chữ chạy liên tục 3–10 phút. **Đúng** khi dấu nhắc `root@...:~#` hiện lại, các dòng cuối không có chữ `E:` hay
 `Error`.
