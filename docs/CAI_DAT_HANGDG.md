@@ -197,7 +197,7 @@ root@vps-xxxx:~#
 > trước (có cài `curl`), rồi quay lại chạy lệnh kiểm tra này.
 
 ```bash
-grep PRETTY_NAME /etc/os-release; ss -ltnp | grep -E ':(80|443) ' || echo "CONG 80/443: TRONG - OK"; curl -s -o /dev/null -w "dgts: %{http_code}\n" https://dgts.moj.gov.vn; curl -s -o /dev/null -w "taisancong: %{http_code}\n" https://taisancong.vn; free -h | grep Mem; df -h / | tail -1
+grep PRETTY_NAME /etc/os-release; ss -ltnp | grep -E ':(80|443) ' || echo "CONG 80/443: TRONG - OK"; curl -s -o /dev/null -w "dgts: %{http_code}\n" https://dgts.moj.gov.vn; curl -s -o /dev/null -A "Mozilla/5.0" -w "taisancong: %{http_code}\n" https://taisancong.vn/niem-yet-gia-dau-gia-dau-thau/thong-tin-ban-dau-gia; free -h | grep Mem; df -h / | tail -1
 ```
 
 **Kết quả đúng** (số có thể khác chút):
@@ -215,7 +215,7 @@ Mem:           3.8Gi       ...
 |---|---|---|
 | `PRETTY_NAME` | `Ubuntu 24.04...` (22.04 cũng được) | Hệ điều hành khác → Portal Vietnix → VPS → **Cài lại hệ điều hành (Reinstall)** → chọn **`Ubuntu-24.04-LTS-x64`** → làm lại từ Phần 3 |
 | Cổng 80/443 | `TRONG - OK` | Thấy `nginx`/`apache2`/`httpd` → lúc đặt hàng đã chọn bản kèm aaPanel/1Panel → **Cài lại hệ điều hành** như trên, chọn bản **không** có chữ Aapanel/1Panel |
-| `dgts:` / `taisancong:` | `200` (hoặc `301`, `302`) | `000` → VPS không kết nối được tới nguồn dữ liệu → báo Vietnix (1800 1093) |
+| `dgts:` / `taisancong:` | `200` (hoặc `301`, `302`). Trang chủ taisancong.vn có thể trả `404` – lệnh trên kiểm tra đúng trang danh sách đấu giá mà phần mềm dùng | `000` → VPS không kết nối được tới nguồn dữ liệu → báo Vietnix (1800 1093) |
 | `Mem` | khoảng `3.8Gi` | — |
 | ổ `/` | khoảng `39G` | — |
 
