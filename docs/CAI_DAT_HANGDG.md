@@ -508,6 +508,8 @@ Hướng dẫn sử dụng cho nhân viên: [HUONG_DAN.md – Phần C](HUONG_DA
 
 ## Sau khi cài xong
 
+> **Tiếp theo:** [CAP_NHAT_DOT_1.md](CAP_NHAT_DOT_1.md) – báo cáo Telegram, sao lưu Google Drive, đăng nhập VPS bằng khoá SSH.
+
 ### Việc hằng tuần (2 phút)
 
 ```powershell
