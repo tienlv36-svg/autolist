@@ -344,27 +344,16 @@ passwd
 
 ## Khi có tên miền
 
-1. Tại nơi quản lý tên miền, tạo bản ghi **A**: `daugia` → `<IP>` (được `daugia.congty.vn`). Chờ 5–30 phút.
-2. Sửa cấu hình Caddy:
+1. Tại nơi quản lý tên miền, tạo 2 bản ghi **A**: `@` → `<IP>` và `www` → `<IP>`. Chờ 5–30 phút, kiểm tra trên máy
+   tính bằng `nslookup ten-mien.com` (phải ra đúng `<IP>`).
+2. Chạy lại script cài đặt kèm tên miền – script tự kiểm tra DNS, xin chứng chỉ HTTPS thật (Let's Encrypt), chuyển
+   `www` về tên miền chính và ghi nhớ tên miền cho các lần cập nhật sau:
    ```bash
-   nano /etc/caddy/Caddyfile
+   cd /root/autolist && git pull && sudo DOMAIN=ten-mien.com EMAIL=email-cua-ban@gmail.com bash deploy/install-vps.sh
    ```
-   Xoá toàn bộ nội dung, thay bằng (sửa tên miền):
-   ```
-   daugia.congty.vn {
-   	encode gzip
-   	request_body {
-   		max_size 1GB
-   	}
-   	reverse_proxy 127.0.0.1:8000
-   }
-   ```
-   Lưu: `Ctrl + O`, Enter, thoát: `Ctrl + X`.
-3. Áp dụng – Caddy tự xin chứng chỉ HTTPS thật, hết cảnh báo:
-   ```bash
-   systemctl reload caddy
-   ```
-4. Truy cập `https://daugia.congty.vn`.
+3. Truy cập `https://ten-mien.com` – không còn cảnh báo chứng chỉ.
+
+Hướng dẫn cụ thể cho tên miền **hangdg.com**: [CAI_DAT_HANGDG.md](CAI_DAT_HANGDG.md).
 
 ---
 

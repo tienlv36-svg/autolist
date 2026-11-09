@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # =============================================================================
-#  Cài đặt tự động trên VPS Ubuntu 22.04 / 24.04 (chưa cần tên miền)
-#  Chạy từ thư mục mã nguồn đã clone:   sudo bash deploy/install-vps.sh
+#  Cài đặt tự động trên VPS Ubuntu 22.04 / 24.04
+#  Chạy từ thư mục mã nguồn đã clone:
+#     Có tên miền :  sudo DOMAIN=hangdg.com EMAIL=ban@email.com bash deploy/install-vps.sh
+#     Chưa có     :  sudo bash deploy/install-vps.sh        (truy cập https://<IP>, chứng chỉ tự ký)
+#  Tên miền được ghi nhớ (data/.domain) -> lần sau cập nhật chỉ cần: sudo bash deploy/install-vps.sh
 #  Chạy lại nhiều lần không sao (bỏ qua bước đã làm).
 #
 #  Script sẽ:
@@ -10,7 +13,8 @@
 #   3. Tạo môi trường Python + cài thư viện, chạy kiểm thử
 #   4. Cấu hình chạy thật (tắt lưu trang gốc để tiết kiệm ổ cứng)
 #   5. Tạo dịch vụ web + thu thập tự động (systemd), sao lưu hằng đêm
-#   6. Caddy: HTTPS trên địa chỉ IP (chứng chỉ tự ký) -> https://<IP>
+#   6. Caddy: HTTPS thật cho tên miền (Let's Encrypt) nếu DNS đã trỏ về VPS;
+#      ngược lại HTTPS trên địa chỉ IP (chứng chỉ tự ký) -> https://<IP>
 #   7. Tường lửa: chỉ mở SSH, 80, 443
 #   8. Tạo tài khoản quản trị web
 # =============================================================================
@@ -21,6 +25,9 @@ SRC="$(cd "$(dirname "$0")/.." && pwd)"
 APP_USER=auction
 PUBLIC_IP="${PUBLIC_IP:-$(curl -fsS -4 --max-time 5 https://api.ipify.org 2>/dev/null || hostname -I | awk '{print $1}')}"
 HAS_SYSTEMD=0; [ -d /run/systemd/system ] && HAS_SYSTEMD=1
+DOMAIN="${DOMAIN:-$(cat "$APP/data/.domain" 2>/dev/null || true)}"
+DOMAIN="$(echo "$DOMAIN" | tr 'A-Z' 'a-z' | sed -E 's#^https?://##; s#/.*$##; s#^www\.##')"
+EMAIL="${EMAIL:-}"
 
 step() { echo; echo "=== $* ==="; }
 [ "$(id -u)" = 0 ] || { echo "Hãy chạy bằng sudo: sudo bash deploy/install-vps.sh"; exit 1; }
@@ -75,25 +82,54 @@ CRON="15 2 * * * $APP/deploy/backup.sh >> $APP/backups/backup.log 2>&1"
 ( crontab -u "$APP_USER" -l 2>/dev/null | grep -v 'deploy/backup.sh' ; echo "$CRON" ) | crontab -u "$APP_USER" - 2>/dev/null \
   && echo "  Sao lưu tự động 2:15 mỗi đêm vào $APP/backups" || echo "  (!) Chưa đặt được lịch sao lưu (thiếu cron)"
 
-step "6/8 Caddy – HTTPS trên địa chỉ IP $PUBLIC_IP"
+resolves_here() {   # tên miền đã trỏ (bản ghi A) về đúng IP của VPS chưa?
+  getent ahostsv4 "$1" 2>/dev/null | awk '{print $1}' | sort -u | grep -qx "$PUBLIC_IP"
+}
+MODE=ip
+if [ -n "$DOMAIN" ]; then
+  if resolves_here "$DOMAIN" || [ "${FORCE_DOMAIN:-0}" = 1 ]; then
+    MODE=domain
+  else
+    echo "  (!) $DOMAIN chưa trỏ về $PUBLIC_IP (hiện: $(getent ahostsv4 "$DOMAIN" | awk '{print $1}' | sort -u | tr '\n' ' '))"
+    echo "      -> tạm dùng HTTPS trên IP. Tạo bản ghi A rồi chạy lại script sau 5-30 phút."
+  fi
+  echo "$DOMAIN" > "$APP/data/.domain"; chown "$APP_USER:$APP_USER" "$APP/data/.domain"
+fi
+
+if [ "$MODE" = domain ]; then
+  step "6/8 Caddy – HTTPS thật (Let's Encrypt) cho $DOMAIN"
+  WWW=""; resolves_here "www.$DOMAIN" && WWW="www.$DOMAIN"
+else
+  step "6/8 Caddy – HTTPS trên địa chỉ IP $PUBLIC_IP"
+fi
 if command -v caddy >/dev/null; then
-  cat > /etc/caddy/Caddyfile <<EOF
-# Truy cập: https://$PUBLIC_IP  (chứng chỉ tự ký - trình duyệt cảnh báo lần đầu, chọn "Tiếp tục")
-# Khi có tên miền: xem docs/HUONG_DAN_VPS.md mục "Khi có tên miền"
-{
-	# trình duyệt không gửi SNI khi truy cập bằng IP -> chỉ định chứng chỉ mặc định
-	default_sni $PUBLIC_IP
-}
-$PUBLIC_IP {
-	tls internal
-	encode gzip
-	request_body {
-		max_size 1GB
-	}
-	reverse_proxy 127.0.0.1:8000
-}
-EOF
+  if [ "$MODE" = domain ]; then
+    {
+      echo "# Phần mềm đấu giá BĐS: https://$DOMAIN  (chứng chỉ Let's Encrypt, Caddy tự gia hạn)"
+      [ -n "$EMAIL" ] && printf '{\n\temail %s\n}\n' "$EMAIL"
+      printf '%s {\n\tencode gzip\n\trequest_body {\n\t\tmax_size 1GB\n\t}\n' "$DOMAIN"
+      printf '\theader Strict-Transport-Security "max-age=31536000"\n\treverse_proxy 127.0.0.1:8000\n}\n'
+      [ -n "$WWW" ] && printf '%s {\n\tredir https://%s{uri} permanent\n}\n' "$WWW" "$DOMAIN"
+      true
+    } > /etc/caddy/Caddyfile
+  else
+    {
+      echo "# Truy cập: https://$PUBLIC_IP  (chứng chỉ tự ký - trình duyệt cảnh báo lần đầu, chọn \"Tiếp tục\")"
+      echo "# Có tên miền: sudo DOMAIN=ten-mien.com bash deploy/install-vps.sh"
+      printf '{\n\t# trình duyệt không gửi SNI khi truy cập bằng IP -> chỉ định chứng chỉ mặc định\n\tdefault_sni %s\n}\n' "$PUBLIC_IP"
+      printf '%s {\n\ttls internal\n\tencode gzip\n\trequest_body {\n\t\tmax_size 1GB\n\t}\n\treverse_proxy 127.0.0.1:8000\n}\n' "$PUBLIC_IP"
+    } > /etc/caddy/Caddyfile
+  fi
+  caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null 2>&1 \
+    && echo "  Cấu hình Caddy hợp lệ" || echo "  (!) Cấu hình Caddy lỗi: caddy validate --config /etc/caddy/Caddyfile"
   if [ "$HAS_SYSTEMD" = 1 ]; then systemctl enable caddy >/dev/null 2>&1; systemctl restart caddy; echo "  caddy: $(systemctl is-active caddy)"; fi
+fi
+# cookie đăng nhập chỉ gửi qua HTTPS khi chạy bằng tên miền
+if [ "$HAS_SYSTEMD" = 1 ]; then
+  mkdir -p /etc/systemd/system/auction-web.service.d
+  printf '[Service]\nEnvironment=AUCTION_COOKIE_SECURE=%s\n' "$([ "$MODE" = domain ] && echo 1 || echo 0)" \
+    > /etc/systemd/system/auction-web.service.d/override.conf
+  systemctl daemon-reload && systemctl restart auction-web
 fi
 
 step "7/8 Tường lửa"
@@ -117,6 +153,11 @@ fi
 
 echo
 echo "==================================================================="
-echo " XONG. Mở trình duyệt:  https://$PUBLIC_IP"
-echo " Bước tiếp theo: lấy dữ liệu lần đầu (docs/HUONG_DAN_VPS.md, Bước 6)"
+if [ "$MODE" = domain ]; then
+  echo " XONG. Mở trình duyệt:  https://$DOMAIN"
+  echo " (lần đầu Caddy cần ~30 giây để xin chứng chỉ; nếu báo lỗi, đợi 1 phút rồi tải lại)"
+else
+  echo " XONG. Mở trình duyệt:  https://$PUBLIC_IP   (cảnh báo chứng chỉ là bình thường)"
+fi
+echo " Bước tiếp theo: lấy dữ liệu lần đầu – sudo -u auction bash $APP/deploy/first-load.sh (trong tmux)"
 echo "==================================================================="

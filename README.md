@@ -1,5 +1,7 @@
 # auction-crawler
 
+> 🚀 **Cài lên VPS Vietnix + hangdg.com:** [docs/CAI_DAT_HANGDG.md](docs/CAI_DAT_HANGDG.md)
+>
 > 📘 **Hướng dẫn chi tiết từng bước** (cài máy chủ, chạy tự động, HTTPS, sao lưu, hướng dẫn sử dụng cho nhân viên):
 > [docs/HUONG_DAN.md](docs/HUONG_DAN.md). **Cài trên VPS (chưa có tên miền):** [docs/HUONG_DAN_VPS.md](docs/HUONG_DAN_VPS.md)
 > – script cài tự động `deploy/install-vps.sh`, lấy dữ liệu lần đầu `deploy/first-load.sh`.

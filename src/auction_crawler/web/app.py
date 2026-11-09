@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import mimetypes
+import os
 import re
 import uuid
 from datetime import date, datetime
@@ -49,7 +50,8 @@ def create_app(repo: Repository | None = None, media_root: Path | None = None,
 
     app = FastAPI(title="Quản lý tài sản đấu giá BĐS", docs_url=None, redoc_url=None)
     app.add_middleware(SessionMiddleware, secret_key=load_secret(media_root.parent / "secret.key"),
-                       max_age=14 * 24 * 3600, same_site="lax", session_cookie="auction_session")
+                       max_age=14 * 24 * 3600, same_site="lax", session_cookie="auction_session",
+                       https_only=os.environ.get("AUCTION_COOKIE_SECURE") == "1")
     app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
     tpl = Jinja2Templates(directory=HERE / "templates")
     tpl.env.globals.update(fmt=fmt, PRIORITIES=PRIORITIES, SALE_FORMS=SALE_FORMS, OWNER_TYPES=OWNER_TYPES,

@@ -146,3 +146,11 @@ def test_manual_price_and_province(env):
     c.post(f"{url}/fields", data={"csrf": tok, "price_first": "1.200.000.000"})
     with repo.session() as s:
         assert s.get(Property, pid).discount_pct == 41.7
+
+
+def test_secure_cookie_when_domain(env, monkeypatch, tmp_path):
+    repo, _ = env
+    monkeypatch.setenv("AUCTION_COOKIE_SECURE", "1")
+    c = TestClient(create_app(repo, media_root=tmp_path / "m2", sync_docs=False), base_url="https://testserver")
+    r = c.post("/login", data={"username": "admin", "password": "matkhau123", "next": "/"}, follow_redirects=False)
+    assert r.status_code == 303 and "secure" in r.headers["set-cookie"].lower()
