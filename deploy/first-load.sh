@@ -16,7 +16,8 @@ A=.venv/bin/auction
 LOG=data/first-load.log
 run() {
   echo "[$(date '+%F %T')] >>> $*" | tee -a "$LOG"
-  "$A" "$@" > >(grep -vE "HTTP Request|^\s*$" | tail -3 | tee -a "$LOG") 2>&1
+  # ghi đầy đủ tiến độ (từng trang) vào nhật ký để theo dõi bằng: tail -f data/first-load.log
+  "$A" "$@" > >(grep --line-buffered -vE "HTTP Request|^\s*$" | tee -a "$LOG") 2>&1
   local rc=$?
   sleep 1
   return $rc
