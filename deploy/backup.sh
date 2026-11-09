@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Sao lưu CSDL (an toàn khi đang chạy) + file tải lên + khoá cookie. Giữ 14 bản gần nhất.
 # Dùng: deploy/backup.sh [thư_mục_đích]     (mặc định /opt/autolist/backups)
-# Cron hằng đêm:  15 2 * * * /opt/autolist/deploy/backup.sh >> /opt/autolist/backups/backup.log 2>&1
+# Cron hằng ngày (sau lượt thu thập 2:00):  15 4 * * * /opt/autolist/deploy/backup.sh >> /opt/autolist/backups/backup.log 2>&1
 set -euo pipefail
 APP_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 DEST="${1:-$APP_DIR/backups}"

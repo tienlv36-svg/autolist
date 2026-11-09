@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -50,5 +51,8 @@ def run_scheduler(settings: Settings, repo: Repository, cron: str) -> None:
     sched.add_job(run_once, CronTrigger.from_crontab(cron, timezone="Asia/Ho_Chi_Minh"),
                   args=[settings, repo], max_instances=1, coalesce=True, id="crawl_all")
     log.info("Lịch: %s (Asia/Ho_Chi_Minh). Ctrl+C để dừng.", cron)
-    run_once(settings, repo)
+    if settings.schedule.get("run_on_start", False):
+        run_once(settings, repo)
+    job = sched.get_job("crawl_all")
+    log.info("Lượt chạy tiếp theo: %s", getattr(job, "next_run_time", None) or job.trigger.get_next_fire_time(None, datetime.now(job.trigger.timezone)))
     sched.start()

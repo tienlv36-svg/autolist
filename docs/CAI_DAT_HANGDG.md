@@ -317,7 +317,7 @@ Script chạy 3–5 phút, in lần lượt 8 mục. **Kết quả đúng** (đ�
 === 4/8 Cấu hình chạy thật ===
 === 5/8 Dịch vụ chạy nền & sao lưu ===
   auction-web: active | auction-scheduler: inactive  <- "inactive" ở đây là đúng (bật ở Phần 10)
-  Sao lưu tự động 2:15 mỗi đêm vào /opt/autolist/backups
+  Sao lưu tự động 4:15 mỗi sáng vào /opt/autolist/backups
 === 6/8 Caddy – HTTPS thật (Let's Encrypt) cho hangdg.com ===
   Cấu hình Caddy hợp lệ
   caddy: active
@@ -485,7 +485,7 @@ active
 active
 ```
 
-Từ đây cứ **6 giờ một lần** phần mềm tự lấy tin mới, giá, gom phiên, tính % giảm. Không cần làm gì thêm.
+Từ đây **mỗi ngày lúc 2:00 sáng** phần mềm tự lấy tin mới, giá, gom phiên, tính % giảm. Không cần làm gì thêm.
 
 ---
 
@@ -518,7 +518,7 @@ ssh root@<IP>
 systemctl is-active auction-web auction-scheduler caddy; df -h / | tail -1; ls -lh /opt/autolist/backups | tail -3
 ```
 
-Đúng: 3 dòng `active`; cột `Use%` của ổ dưới 80%; có file sao lưu `autolist_YYYYMMDD_0215.tar.gz` của các đêm gần nhất.
+Đúng: 3 dòng `active`; cột `Use%` của ổ dưới 80%; có file sao lưu `autolist_YYYYMMDD_0415.tar.gz` của các đêm gần nhất.
 
 ### Chép bản sao lưu về máy tính (hằng tháng)
 

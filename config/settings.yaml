@@ -17,5 +17,6 @@ crawl:
   stop_when_page_all_seen: true  # chạy tăng dần: dừng khi cả trang đã có trong DB
 
 schedule:                        # dùng với lệnh `auction schedule`
-  cron: "17 */6 * * *"           # 6 giờ/lần (phút lẻ để tránh giờ chẵn)
+  cron: "0 2 * * *"              # mỗi ngày 1 lần lúc 2:00 sáng (giờ Việt Nam)
+  run_on_start: false            # true: chạy ngay 1 lượt mỗi khi dịch vụ khởi động
   ocr_limit: 0                   # >0: mỗi lượt OCR giá từ PDF cho N tin taisancong (cần tesseract)

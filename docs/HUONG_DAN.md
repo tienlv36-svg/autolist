@@ -94,7 +94,7 @@ raw_cache_dir: data/raw             # lưu bản gốc trang đã tải; đặt 
 crawl:
   max_pages: 50                     # số trang tối đa mỗi lần quét tăng dần
 schedule:
-  cron: "17 */6 * * *"              # chạy tự động 6 giờ/lần
+  cron: "0 2 * * *"                 # chạy tự động mỗi ngày lúc 2:00 sáng (giờ Việt Nam)
   ocr_limit: 0                      # >0: mỗi lượt OCR giá cho N tin taisancong (mỗi tin ~13 giây)
 ```
 
@@ -180,7 +180,7 @@ sudo systemctl restart auction-web`, rồi truy cập `http://<IP-nội-bộ>:80
    .venv\Scripts\auction web --host 0.0.0.0 --port 8000
    ```
 3. Thu thập tự động: mở *Task Scheduler* → *Create Basic Task* → chạy `C:\autolist\.venv\Scripts\auction.exe`,
-   tham số `crawl`, *Start in* `C:\autolist`, lặp mỗi 6 giờ; tạo thêm một task tương tự với tham số `re-build`
+   tham số `crawl`, *Start in* `C:\autolist`, lặp hằng ngày lúc 2:00; tạo thêm một task tương tự với tham số `re-build`
    chạy sau đó 1 giờ. Web cần một cửa sổ PowerShell luôn mở, hoặc dùng NSSM (https://nssm.cc) để chạy như dịch vụ.
 4. OCR trên Windows: cài Tesseract (bản UB Mannheim, chọn thêm ngôn ngữ *Vietnamese*) và Poppler, rồi thêm thư mục
    `bin` của cả hai vào PATH.
@@ -216,7 +216,7 @@ Thời gian phụ thuộc tốc độ phản hồi của dgts (khoảng 0,5–1,
 
 ### B2. Chạy tự động hằng ngày
 
-Dịch vụ `auction-scheduler` (mục A7) cứ 6 giờ chạy một lượt:
+Dịch vụ `auction-scheduler` (mục A7) chạy một lượt mỗi ngày lúc 2:00 sáng (đổi giờ: sửa `schedule.cron` trong `config/settings.yaml`):
 quét tin mới cả 2 nguồn (kèm chi tiết) → gắn loại tài sản chính thức → OCR (nếu bật `ocr_limit`) →
 đánh dấu tin trùng → dựng lại tài sản BĐS. Người dùng không cần làm gì thêm.
 
@@ -247,10 +247,10 @@ Sao lưu gồm CSDL (an toàn khi đang chạy), toàn bộ file tải lên và 
 sudo -u auction /opt/autolist/deploy/backup.sh
 ```
 
-Chạy tự động lúc 2:15 mỗi đêm: `sudo -u auction crontab -e` rồi thêm dòng
+Chạy tự động lúc 4:15 mỗi sáng (sau lượt thu thập 2:00): `sudo -u auction crontab -e` rồi thêm dòng
 
 ```
-15 2 * * * /opt/autolist/deploy/backup.sh >> /opt/autolist/backups/backup.log 2>&1
+15 4 * * * /opt/autolist/deploy/backup.sh >> /opt/autolist/backups/backup.log 2>&1
 ```
 
 Nên chép thư mục `/opt/autolist/backups` sang máy khác hoặc kho lưu trữ đám mây định kỳ (rclone, Google Drive...).

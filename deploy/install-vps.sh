@@ -78,9 +78,9 @@ if [ "$HAS_SYSTEMD" = 1 ]; then
 else
   echo "  (!) Máy không dùng systemd – bỏ qua tạo dịch vụ"
 fi
-CRON="15 2 * * * $APP/deploy/backup.sh >> $APP/backups/backup.log 2>&1"
+CRON="15 4 * * * $APP/deploy/backup.sh >> $APP/backups/backup.log 2>&1"
 ( crontab -u "$APP_USER" -l 2>/dev/null | grep -v 'deploy/backup.sh' ; echo "$CRON" ) | crontab -u "$APP_USER" - 2>/dev/null \
-  && echo "  Sao lưu tự động 2:15 mỗi đêm vào $APP/backups" || echo "  (!) Chưa đặt được lịch sao lưu (thiếu cron)"
+  && echo "  Sao lưu tự động 4:15 mỗi sáng vào $APP/backups" || echo "  (!) Chưa đặt được lịch sao lưu (thiếu cron)"
 
 resolves_here() {   # tên miền đã trỏ (bản ghi A) về đúng IP của VPS chưa?
   getent ahostsv4 "$1" 2>/dev/null | awk '{print $1}' | sort -u | grep -qx "$PUBLIC_IP"

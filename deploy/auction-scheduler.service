@@ -1,4 +1,4 @@
-# Thu thập tự động mỗi 6 giờ (crawl -> tag-types -> ocr -> dedupe -> re-build)
+# Thu thập tự động mỗi ngày 2:00 (đổi giờ: config/settings.yaml -> schedule.cron) (crawl -> tag-types -> ocr -> dedupe -> re-build)
 # copy vào /etc/systemd/system/ rồi: sudo systemctl enable --now auction-scheduler
 [Unit]
 Description=Auction crawler scheduler

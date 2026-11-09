@@ -291,7 +291,7 @@ def schedule(cron: str = typer.Option(None, help="Biểu thức cron, mặc đ�
     from .scheduler import run_scheduler
 
     s, repo = _setup()
-    run_scheduler(s, repo, cron or s.schedule.get("cron", "0 */6 * * *"))
+    run_scheduler(s, repo, cron or s.schedule.get("cron", "0 2 * * *"))
 
 
 if __name__ == "__main__":

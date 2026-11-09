@@ -35,7 +35,7 @@ class Settings(BaseModel):
     log_level: str = "INFO"
     http: HttpSettings = Field(default_factory=HttpSettings)
     crawl: CrawlSettings = Field(default_factory=CrawlSettings)
-    schedule: dict[str, Any] = Field(default_factory=lambda: {"cron": "0 */6 * * *"})
+    schedule: dict[str, Any] = Field(default_factory=lambda: {"cron": "0 2 * * *", "run_on_start": False})
 
     def path(self, p: str) -> Path:
         q = Path(p)

@@ -113,7 +113,7 @@ Script tự làm 8 việc (mất khoảng 3–5 phút), in ra từng mục `=== 
 2. Tạo tài khoản hệ thống `auction`, đặt phần mềm tại `/opt/autolist`
 3. Cài thư viện và **chạy kiểm thử** – phải thấy dòng `58 passed` (con số có thể lớn hơn ở bản mới)
 4. Cấu hình chạy thật (tắt lưu bản gốc trang web để tiết kiệm ổ cứng)
-5. Tạo dịch vụ web tự khởi động, đặt lịch **sao lưu tự động 2:15 mỗi đêm**
+5. Tạo dịch vụ web tự khởi động, đặt lịch **sao lưu tự động 4:15 mỗi sáng**
 6. Bật **HTTPS trên địa chỉ IP** (chứng chỉ tự ký – xem Bước 6)
 7. Bật tường lửa: chỉ mở cổng SSH (22), 80, 443
 8. Tạo **tài khoản quản trị web**: script hỏi
@@ -213,7 +213,7 @@ Sau khi Bước 7 báo `HOÀN TẤT`:
 sudo systemctl enable --now auction-scheduler
 ```
 
-Từ đây cứ **6 giờ một lần** phần mềm tự: lấy tin mới của cả 2 nguồn (kèm giá) → gắn loại tài sản →
+Từ đây **mỗi ngày lúc 2:00 sáng** phần mềm tự: lấy tin mới của cả 2 nguồn (kèm giá) → gắn loại tài sản →
 đánh dấu tin trùng → gom phiên, tính giá phiên 1 / hiện tại / % giảm. Kiểm tra:
 
 ```bash
