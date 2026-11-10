@@ -1,0 +1,37 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(systemctl status:*)",
+      "Bash(systemctl is-active:*)",
+      "Bash(systemctl is-enabled:*)",
+      "Bash(journalctl:*)",
+      "Bash(tail:*)",
+      "Bash(head:*)",
+      "Bash(df:*)",
+      "Bash(du:*)",
+      "Bash(free:*)",
+      "Bash(uptime)",
+      "Bash(tmux ls)",
+      "Bash(pgrep:*)",
+      "Bash(ls:*)",
+      "Bash(sqlite3 -readonly:*)",
+      "Bash(ufw status:*)",
+      "Bash(fail2ban-client status:*)",
+      "Bash(curl -sI:*)",
+      "Bash(git -C /root/autolist log:*)",
+      "Bash(git -C /root/autolist status:*)",
+      "Bash(git -C /root/autolist fetch:*)"
+    ],
+    "deny": [
+      "Bash(rm -rf /opt/autolist:*)",
+      "Bash(rm -rf /opt/autolist/data:*)",
+      "Bash(rm -rf /opt/autolist/backups:*)",
+      "Bash(rm /opt/autolist/data/auction.db:*)",
+      "Bash(cat /opt/autolist/data/telegram.json:*)",
+      "Bash(cat /opt/autolist/data/secret.key:*)",
+      "Read(/opt/autolist/data/telegram.json)",
+      "Read(/opt/autolist/data/secret.key)",
+      "Read(/home/auction/.config/rclone/rclone.conf)"
+    ]
+  }
+}

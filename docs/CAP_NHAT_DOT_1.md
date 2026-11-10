@@ -277,3 +277,10 @@ systemctl is-active auction-web auction-scheduler caddy fail2ban; ls /opt/autoli
 ```
 
 Đúng: 4 dòng `active`, đường dẫn `telegram.json`, và `gdrive:`.
+
+---
+
+## Tiếp theo – điều khiển VPS bằng Claude
+
+Sau khi cập nhật xong, có thể cài Claude Code trên VPS để ra lệnh vận hành bằng tiếng Việt từ app Claude:
+[CLAUDE_TREN_VPS.md](CLAUDE_TREN_VPS.md).
