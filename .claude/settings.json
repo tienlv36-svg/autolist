@@ -31,7 +31,11 @@
       "Bash(cat /opt/autolist/data/secret.key:*)",
       "Read(/opt/autolist/data/telegram.json)",
       "Read(/opt/autolist/data/secret.key)",
-      "Read(/home/auction/.config/rclone/rclone.conf)"
-    ]
+      "Read(/home/auction/.config/rclone/rclone.conf)",
+      "Bash(rm -rf /opt/autolist/data/files:*)",
+      "Bash(rm -r /opt/autolist/data:*)",
+      "Bash(rm -r /opt/autolist/backups:*)"
+    ],
+    "defaultMode": "default"
   }
 }

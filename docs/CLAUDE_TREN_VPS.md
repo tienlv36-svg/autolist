@@ -125,4 +125,5 @@ tmux kill-session -t claude
 - Ai đăng nhập được **tài khoản Claude của bạn** thì điều khiển được VPS qua phiên này: bật xác thực 2 lớp cho tài
   khoản Claude/Google, không chia sẻ tài khoản.
 - Phần mềm có sẵn quy tắc quyền (`.claude/settings.json`): các lệnh chỉ xem (trạng thái, nhật ký, dung lượng) chạy
-  ngay; các lệnh xoá dữ liệu/sao lưu và đọc file bí mật bị chặn; mọi lệnh khác Claude phải hỏi bạn.
+  ngay; các lệnh xoá dữ liệu/sao lưu và đọc file bí mật bị chặn; mọi lệnh khác Claude phải hỏi bạn. Chế độ quyền
+  mặc định là **hỏi trước** (`default`), không dùng *auto mode* trên VPS sản xuất.
