@@ -23,7 +23,7 @@ from datetime import datetime
 
 from sqlalchemy import select, update
 
-from ..normalize import strip_accents
+from ..normalize import plausible_dt, strip_accents
 from ..storage import AssetRow, NoticeRow, Repository
 from .db import Activity, Comment, FileView, Property, PropertyFile, PropertyNotice, Task
 from .extract import RealEstateInfo, extract
@@ -140,7 +140,8 @@ def load_items(repo: Repository) -> list[Item]:
         single = (r.property_count or 1) == 1
         out.append(Item(r.id, r.source, r.title, r.asset_owner, r.origin, info.province, r.address,
                         r.starting_price if single else None, r.deposit if single else None,
-                        r.auction_date, r.registration_end, r.publish_date, r.dup_group, cat, info,
+                        plausible_dt(r.auction_date), plausible_dt(r.registration_end), plausible_dt(r.publish_date),
+                        r.dup_group, cat, info,
                         r.property_count))
     return out
 

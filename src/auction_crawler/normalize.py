@@ -112,6 +112,20 @@ def parse_datetime(s: str | None) -> datetime | None:
         return None
 
 
+MIN_PLAUSIBLE_YEAR = 2010
+
+
+def plausible_dt(dt: datetime | None) -> datetime | None:
+    """Ngày của thông báo đấu giá (đăng, hạn đăng ký, tổ chức) phải hợp lý: năm >= 2010 và không quá 5 năm
+    tới. Ngoài khoảng đó (vd 01/01/1970 do nguồn để trống, 2003 do nhập nhầm) -> coi như KHÔNG CÓ (để trống),
+    không đoán lại."""
+    if dt is None:
+        return None
+    if dt.year < MIN_PLAUSIBLE_YEAR or dt.year > datetime.now().year + 5:
+        return None
+    return dt
+
+
 def parse_date(s: str | None) -> date | None:
     dt = parse_datetime(s)
     return dt.date() if dt else None

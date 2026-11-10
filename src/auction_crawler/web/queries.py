@@ -4,7 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, case, func, or_, select
 
 from ..realestate.db import Property, Task
 
@@ -14,14 +14,22 @@ def eff(col: str):
 
 
 SORTS = {
-    "han_dang_ky": ("Sắp hết hạn đăng ký", lambda: [Property.registration_end.is_(None), Property.registration_end.asc()]),
+    "han_dang_ky": ("Sắp hết hạn đăng ký", lambda: _by_deadline()),
     "moi_nhat": ("Mới đăng", lambda: [Property.publish_date.desc().nulls_last(), Property.id.desc()]),
     "gia_tang": ("Giá thấp → cao", lambda: [eff("price_latest").is_(None), eff("price_latest").asc()]),
     "gia_giam": ("Giá cao → thấp", lambda: [eff("price_latest").desc().nulls_last()]),
     "giam_nhieu": ("Giảm giá nhiều nhất", lambda: [Property.discount_pct.desc().nulls_last()]),
-    "uu_tien": ("Ưu tiên cao", lambda: [Property.priority.desc(), Property.registration_end.asc()]),
+    "uu_tien": ("Ưu tiên cao", lambda: [Property.priority.desc(), *_by_deadline()]),
     "dien_tich": ("Diện tích lớn", lambda: [eff("land_area").desc().nulls_last()]),
 }
+
+
+def _by_deadline():
+    """Còn hạn đăng ký trước (hạn gần nhất lên đầu) -> đã hết hạn (mới hết hạn trước) -> không có hạn."""
+    now = datetime.now()
+    is_open = Property.registration_end >= now
+    bucket = case((is_open, 0), (Property.registration_end.is_(None), 2), else_=1)
+    return [bucket, case((is_open, Property.registration_end)).asc(), Property.registration_end.desc()]
 
 
 @dataclass

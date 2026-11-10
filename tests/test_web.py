@@ -224,3 +224,17 @@ def test_users_page_row_forms(env):
     assert f'<form method="post" action="/admin/users/{nv1}" id="u{nv1}">' in page
     assert f'name="role" form="u{nv1}"' in page and 'data-label="Quyền"' in page
     assert "<tr><form" not in page      # không còn form lồng sai trong <tr>
+
+
+def test_deadline_sort_open_first(tmp_path):
+    from auction_crawler.web.queries import Filters, build_query
+    repo = Repository(f"sqlite:///{tmp_path}/s.db")
+    repo.init_db()
+    now = datetime.now()
+    with repo.Session.begin() as s:
+        for i, d in enumerate([now - timedelta(days=400), now + timedelta(days=9), None,
+                               now + timedelta(days=2), now - timedelta(days=3)]):
+            s.add(Property(id=i + 1, title=f"p{i}", registration_end=d, session_count=1))
+    with repo.session() as s:
+        ids = [p.id for p in s.scalars(build_query(Filters(sort="han_dang_ky"), 0)).all()]
+    assert ids == [4, 2, 5, 1, 3]

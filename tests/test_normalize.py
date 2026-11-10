@@ -39,3 +39,14 @@ def test_detect_province(s, new, raw):
 def test_time_after_date():
     assert parse_datetime("26-11-2026 09:00") == datetime(2026, 11, 26, 9, 0)
     assert parse_datetime(datetime(2026, 1, 2, 3, 4)) == datetime(2026, 1, 2, 3, 4)
+
+
+def test_plausible_dt():
+    from datetime import datetime
+    from auction_crawler.normalize import plausible_dt
+    from auction_crawler.sources.dgts import ms_to_vn
+    assert plausible_dt(datetime(1970, 1, 1)) is None
+    assert plausible_dt(datetime(2003, 3, 7)) is None
+    assert plausible_dt(datetime(2021, 6, 15)) == datetime(2021, 6, 15)
+    assert ms_to_vn(-25200000) is None and ms_to_vn(1) is None
+    assert ms_to_vn(1762740000000).year == 2025

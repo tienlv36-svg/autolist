@@ -27,7 +27,7 @@ from typing import Any
 from bs4 import BeautifulSoup
 
 from ..http_client import Fetcher
-from ..normalize import clean_text, strip_accents
+from ..normalize import clean_text, plausible_dt, strip_accents
 from .base import ConfigSource
 
 log = logging.getLogger(__name__)
@@ -39,7 +39,7 @@ def ms_to_vn(ms: Any) -> datetime | None:
     if ms in (None, "", 0):
         return None
     try:
-        return datetime.fromtimestamp(int(ms) / 1000, VN_TZ).replace(tzinfo=None)
+        return plausible_dt(datetime.fromtimestamp(int(ms) / 1000, VN_TZ).replace(tzinfo=None))
     except (ValueError, OSError, OverflowError):
         return None
 
