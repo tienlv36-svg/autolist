@@ -12,6 +12,7 @@
     {{ verified_badge(p) }}{{ priority_badge(p.priority) }}
     <span class="muted small">#{{ p.id }}</span>
   </div>
+  {% if msg == 'rebuild' %}<div class="alert info">Đã ghi nhận gộp/tách. Phần mềm đang tính lại phiên và giá ở nền (vài phút với dữ liệu lớn) – tải lại trang sau để thấy kết quả.</div>{% endif %}
   <h1 class="clamp" title="Bấm để xem đầy đủ" onclick="this.classList.toggle('open')">{{ p.title }}</h1>
   <div class="loc">{{ parcel_or_address(p) }}</div>
   <div class="kpis">

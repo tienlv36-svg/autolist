@@ -351,6 +351,26 @@ def docs_reparse():
     console.print(f"Đã trích lại {n} tin")
 
 
+@app.command("merge-suggest")
+def merge_suggest():
+    """Tìm cặp tài sản nghi là cùng một BĐS (gợi ý gộp phiên – người dùng duyệt trên web, menu Gợi ý gộp)."""
+    from .realestate.suggest import compute
+
+    s, repo = _setup()
+    console.print(f"Gợi ý gộp mới: {compute(repo)}")
+
+
+@app.command("alerts")
+def alerts_cmd():
+    """Gửi ngay bộ lọc đã lưu + nhắc hạn vào Telegram cá nhân (bình thường chạy sau mỗi lượt tự động)."""
+    from .alerts import run_alerts
+
+    s, repo = _setup()
+    st = run_alerts(s, repo)
+    console.print(f"Liên kết mới {st.linked}; {st.searches} bộ lọc, gửi {st.search_msgs} tin bộ lọc, "
+                  f"{st.reminder_msgs} tin nhắc hạn")
+
+
 @app.command("run-now")
 def run_now():
     """Chạy ngay một lượt như lịch tự động (thu thập + gom phiên + báo Telegram)."""

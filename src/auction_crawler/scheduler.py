@@ -92,6 +92,8 @@ def _run_steps(settings: Settings, repo: Repository, report: dict[str, Any]) -> 
         ("re-build", lambda: rebuild(repo)),          # tài sản BĐS: gom phiên, giá, % giảm
         ("history", lambda: _history_then_rebuild(settings, repo, int(sch.get("history_limit", 500)))),
         ("docs", lambda: _docs_then_rebuild(settings, repo)),   # tải + đọc file đính kèm, ưu tiên số liệu tài liệu
+        ("suggest", lambda: _suggest(repo)),                     # gợi ý gộp phiên (người dùng duyệt trên web)
+        ("alerts", lambda: _alerts(settings, repo)),             # bộ lọc đã lưu + nhắc hạn (Telegram cá nhân)
     ]
     for label, fn in steps:
         try:
@@ -126,6 +128,16 @@ def _docs_then_rebuild(settings: Settings, repo: Repository):
     if st.notices:
         rebuild(repo)
     return st
+
+
+def _suggest(repo: Repository) -> int:
+    from .realestate.suggest import compute
+    return compute(repo)
+
+
+def _alerts(settings: Settings, repo: Repository):
+    from .alerts import run_alerts
+    return run_alerts(settings, repo)
 
 
 def run_backup(settings: Settings) -> dict[str, Any]:
@@ -179,6 +191,12 @@ def format_report(settings: Settings, repo: Repository, report: dict[str, Any]) 
                      + (f"; {esc(ds.details[-1])}" if ds.details else ""))
         if ds.stopped:
             warns.append(f"File đính kèm: {ds.stopped}")
+    sg = (steps.get("suggest") or {}).get("result")
+    if sg:
+        lines.append(f"• Gợi ý gộp phiên mới: <b>{num(sg)}</b> (duyệt trên web: menu Gợi ý gộp)")
+    al = (steps.get("alerts") or {}).get("result")
+    if al is not None and (getattr(al, "search_msgs", 0) or getattr(al, "reminder_msgs", 0)):
+        lines.append(f"• Đã gửi {num(al.search_msgs)} tin bộ lọc, {num(al.reminder_msgs)} tin nhắc hạn (Telegram cá nhân)")
     bkr = report.get("backup")
     if bkr is not None and not bkr.get("ok"):
         warns.append(f"Sao lưu sau lượt quét LỖI: {bkr.get('error')}")

@@ -41,6 +41,9 @@ class User(Base):
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
     last_login: Mapped[datetime | None] = mapped_column(DateTime)
+    tg_chat_id: Mapped[str | None] = mapped_column(String(32))       # Telegram cá nhân (nhận bộ lọc, nhắc hạn)
+    tg_link_code: Mapped[str | None] = mapped_column(String(16))     # mã gửi cho bot: /start <mã>
+    last_reminder_on: Mapped[date | None] = mapped_column(Date)      # đã nhắc hạn ngày nào (mỗi ngày 1 lần)
 
 
 class Property(Base):
@@ -206,6 +209,35 @@ class CartItem(Base):
     added_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
     user: Mapped[User] = relationship()
     property: Mapped[Property] = relationship()
+
+
+class SavedSearch(Base):
+    """Bộ lọc đã lưu của một tài khoản (riêng tư). notify=True -> báo tài sản MỚI khớp bộ lọc qua Telegram cá nhân."""
+    __tablename__ = "saved_searches"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(120))
+    query: Mapped[str] = mapped_column(Text)                 # chuỗi tham số bộ lọc của trang danh sách
+    notify: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    checked_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)   # mốc "mới" cho lần báo sau
+    last_new: Mapped[int] = mapped_column(Integer, default=0)                       # số tài sản mới lần báo gần nhất
+    user: Mapped[User] = relationship()
+
+
+class MergeSuggestion(Base):
+    """Cặp tài sản nghi là cùng một BĐS (máy chỉ GỢI Ý; người dùng bấm Đồng ý mới gộp)."""
+    __tablename__ = "merge_suggestions"
+    __table_args__ = (UniqueConstraint("a_id", "b_id", name="uq_merge_pair"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    a_id: Mapped[int] = mapped_column(Integer, index=True)       # tài sản còn hạn (giữ lại)
+    b_id: Mapped[int] = mapped_column(Integer, index=True)       # tài sản cũ nghi trùng
+    reason: Mapped[str] = mapped_column(Text)
+    score: Mapped[int] = mapped_column(Integer, default=0)
+    status: Mapped[str] = mapped_column(String(12), default="pending", index=True)   # pending|accepted|rejected
+    decided_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
 
 
 class LoginAttempt(Base):

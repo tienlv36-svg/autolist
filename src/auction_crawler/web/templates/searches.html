@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Bộ lọc đã lưu{% endblock %}
+{% block content %}
+<h1>🔔 Bộ lọc đã lưu</h1>
+{% if msg %}<div class="alert info">{{ msg }}</div>{% endif %}
+<p class="small muted">Bộ lọc là riêng của bạn. Lưu bộ lọc ở trang <a class="link" href="/">Tài sản</a> (chọn bộ lọc → <b>💾 Lưu bộ lọc</b>).
+Sau mỗi lượt thu thập (0:00 và 12:00), tài sản <b>mới</b> hoặc có <b>phiên mới</b> khớp bộ lọc được gửi vào Telegram cá nhân của bạn.
+{% if not tg_ready %}<br>⚠ Hệ thống chưa cài bot Telegram.{% elif not user.tg_chat_id %}<br>⚠ Bạn chưa liên kết Telegram – <a class="link" href="/account#telegram">liên kết ngay</a>.{% endif %}</p>
+<div class="card">
+{% if not items %}<p class="muted">Chưa có bộ lọc nào.</p>{% else %}
+<div class="tblwrap"><table class="tbl resp">
+  <thead><tr><th>Tên</th><th>Đang khớp</th><th>Mới lần báo gần nhất</th><th>Báo Telegram</th><th></th></tr></thead>
+  <tbody>
+  {% for ss in items %}
+  <tr>
+    <td data-label="Tên"><div><a href="/searches/{{ ss.id }}/open"><b>{{ ss.name }}</b></a><div class="small muted">lưu {{ fmt.dt(ss.created_at) }}</div></div></td>
+    <td data-label="Đang khớp"><a href="/searches/{{ ss.id }}/open">{{ fmt.num(counts.get(ss.id, 0)) }} tài sản</a></td>
+    <td data-label="Mới lần báo">{{ ss.last_new }} <span class="small muted">({{ fmt.dt(ss.checked_at) }})</span></td>
+    <td data-label="Báo Telegram"><form method="post" action="/searches/{{ ss.id }}"><input type="hidden" name="csrf" value="{{ csrf }}">
+      <button name="action" value="notify" class="btn small {{ 'primary' if ss.notify }}">{{ 'Đang bật' if ss.notify else 'Đang tắt' }}</button></form></td>
+    <td class="act"><form method="post" action="/searches/{{ ss.id }}" onsubmit="return confirm('Xoá bộ lọc?')"><input type="hidden" name="csrf" value="{{ csrf }}">
+      <button name="action" value="delete" class="link danger">Xoá</button></form></td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table></div>{% endif %}
+</div>
+{% endblock %}

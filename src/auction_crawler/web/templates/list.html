@@ -63,14 +63,27 @@
   <label class="chk"><input type="checkbox" name="multi_session" value="1" {{ 'checked' if f.multi_session }}> Đấu giá nhiều phiên</label>
   <label class="chk"><input type="checkbox" name="mine" value="1" {{ 'checked' if f.mine }}> Được giao cho tôi</label>
   <label class="chk"><input type="checkbox" name="cart" value="1" {{ 'checked' if f.cart }}> Trong giỏ hàng của tôi</label>
+  <label>Còn thiếu dữ liệu
+    <select name="missing"><option value="">—</option>
+      {% for k, (lbl, _) in MISSING.items() %}<option value="{{ k }}" {{ 'selected' if f.missing == k }}>Thiếu {{ lbl|lower }}</option>{% endfor %}
+    </select>
+  </label>
   <button class="btn primary block">Lọc</button>
   </details>
 </form>
 
 <section class="results">
+  {% if remind_n %}<a class="alert warn block" href="/reminders">⏰ Có <b>{{ remind_n }}</b> mục cần chú ý (giỏ hàng sắp hết hạn đăng ký / việc sắp quá hạn) – xem</a>{% endif %}
   <div class="rhead">
     <div><strong>{{ '{:,}'.format(total).replace(',', '.') }}</strong> tài sản
-      {% if total %}<a class="btn small" href="/export.xlsx?{{ base_qs }}" title="Xuất danh sách đang lọc (tối đa 20.000 dòng)">⬇ Xuất Excel</a>{% endif %}</div>
+      {% if total %}<a class="btn small" href="/export.xlsx?{{ base_qs }}" title="Xuất danh sách đang lọc (tối đa 20.000 dòng)">⬇ Xuất Excel</a>{% endif %}
+      {% if base_qs %}<details class="savebox"><summary class="btn small">💾 Lưu bộ lọc</summary>
+        <form method="post" action="/searches" class="savef">
+          <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="query" value="{{ base_qs }}">
+          <input name="name" placeholder="Tên bộ lọc, vd: Ngân hàng HN dưới 5 tỷ" maxlength="120">
+          <label class="chk"><input type="checkbox" name="notify" value="1" checked> Báo tài sản mới qua Telegram</label>
+          <button class="btn primary small">Lưu</button>
+        </form></details>{% endif %}</div>
     <label class="sort">Sắp xếp
       <select name="sort" form="filters" onchange="this.form.submit()">
         {% for k, (lbl, _) in SORTS.items() %}<option value="{{ k }}" {{ 'selected' if k == f.sort }}>{{ lbl }}</option>{% endfor %}

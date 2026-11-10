@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Độ đầy đủ dữ liệu{% endblock %}
+{% block content %}
+<h1>Độ đầy đủ dữ liệu</h1>
+<p class="small muted">Tính trên <b>{{ fmt.num(total) }}</b> tài sản <b>còn hạn đăng ký</b> (gồm cả giá trị nhập tay).
+{{ fmt.num(from_docs) }} tài sản có số liệu lấy từ file đính kèm. Bấm “Xem danh sách thiếu” để nhập tay bổ sung (sắp xếp theo hạn đăng ký gần nhất).</p>
+<div class="card"><div class="tblwrap"><table class="tbl resp">
+  <thead><tr><th>Thông tin</th><th>Áp dụng cho</th><th>Đã có</th><th>Còn thiếu</th><th></th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+  <tr><td data-label="Thông tin"><b>{{ r.label }}</b></td>
+    <td data-label="Áp dụng cho">{{ fmt.num(r.scope) }}</td>
+    <td data-label="Đã có"><div>{% if r.pct is not none %}<div class="bar" title="{{ r.pct }}%"><span style="width:{{ r.pct }}%"></span></div><span class="small">{{ fmt.num(r.pct) }}%</span>{% else %}—{% endif %}</div></td>
+    <td data-label="Còn thiếu">{{ fmt.num(r.missing) }}</td>
+    <td class="act">{% if r.missing %}<a class="btn small" href="/?open_only=1&missing={{ r.key }}&sort=han_dang_ky">Xem danh sách thiếu</a>{% endif %}</td></tr>
+  {% endfor %}
+  </tbody>
+</table></div></div>
+<p class="small muted">Thiếu thường do nguồn không ghi, hoặc ghi nhiều giá trị khác nhau nên phần mềm để trống (không suy luận) – lý do nằm trong trang chi tiết từng tài sản.</p>
+{% endblock %}

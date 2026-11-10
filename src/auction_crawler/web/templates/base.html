@@ -5,6 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Tài sản đấu giá BĐS{% endblock %}</title>
   <link rel="stylesheet" href="/static/app.css?v=1">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="theme-color" content="#0f5c4d">
+  <link rel="icon" href="/static/icon-192.png">
+  <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Đấu giá BĐS">
 </head>
 <body>
 {% if user %}
@@ -14,6 +20,9 @@
     <a href="/" class="{{ 'on' if request.url.path == '/' }}">Tài sản</a>
     <a href="/tasks" class="{{ 'on' if request.url.path.startswith('/tasks') }}">Việc của tôi</a>
     <a href="/cart" class="{{ 'on' if request.url.path.startswith('/cart') }}">🛒 Giỏ hàng{% if cart_count %} <span class="cnt">{{ cart_count }}</span>{% endif %}</a>
+    <a href="/searches" class="{{ 'on' if request.url.path.startswith('/searches') }}">🔔 Bộ lọc</a>
+    <a href="/merges" class="{{ 'on' if request.url.path.startswith('/merges') }}">Gợi ý gộp{% if merge_count %} <span class="cnt">{{ merge_count }}</span>{% endif %}</a>
+    <a href="/quality" class="{{ 'on' if request.url.path.startswith('/quality') }}">Độ đầy đủ</a>
     {% if user.role == 'admin' %}<a href="/admin/users" class="{{ 'on' if request.url.path.startswith('/admin/users') }}">Tài khoản</a>
     <a href="/admin/system" class="{{ 'on' if request.url.path.startswith('/admin/system') }}">Hệ thống</a>{% endif %}
   </nav>
@@ -27,5 +36,6 @@
 {% block content %}{% endblock %}
 </main>
 <script src="/static/app.js?v=1"></script>
+<script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});</script>
 </body>
 </html>

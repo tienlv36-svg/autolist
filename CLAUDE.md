@@ -23,8 +23,8 @@ không phải lập trình viên: giải thích ngắn gọn, dễ hiểu, nói 
 Luồng dữ liệu mỗi lượt (0:00 và 12:00, `auction schedule` / `auction run-now`): thu thập tin mới 2 nguồn
 (dgts.moj.gov.vn qua API JSON, taisancong.vn qua HTML) → gắn loại tài sản chính thức → OCR (nếu bật) → đánh dấu tin
 trùng → gom phiên tài sản BĐS (`re-build`) → quét lịch sử giá cho tài sản còn hạn đăng ký → tải + lưu + đọc file
-đính kèm của tài sản còn hạn đăng ký (tối đa `docs_minutes` phút; số liệu tài liệu được ưu tiên) → gom phiên lại → sao lưu →
-báo cáo Telegram.
+đính kèm của tài sản còn hạn đăng ký (tối đa `docs_minutes` phút; số liệu tài liệu được ưu tiên) → gom phiên lại → gợi ý
+gộp phiên → bộ lọc đã lưu + nhắc hạn (Telegram cá nhân) → sao lưu → báo cáo Telegram.
 
 ## Chạy lệnh đúng cách
 
@@ -49,6 +49,8 @@ Các lệnh CLI hay dùng (`auction --help` để xem đủ):
 | `history-scan -n N` | Quét lịch sử giá (phiên cũ) cho tài sản còn hạn đăng ký |
 | `docs-fetch -m PHÚT [-n N]` | Tải, lưu, đọc file đính kèm (còn hạn trước) rồi gom phiên lại |
 | `docs-reparse` | Trích lại số liệu từ chữ đã lưu (không tải lại) rồi gom phiên lại |
+| `merge-suggest` | Tạo gợi ý gộp phiên (người dùng duyệt trên web: menu **Gợi ý gộp**) |
+| `alerts` | Gửi ngay bộ lọc đã lưu + nhắc hạn vào Telegram cá nhân (gửi tin – hỏi người dùng trước) |
 | `dedupe`, `tag-types` | Tin trùng giữa 2 nguồn; loại tài sản chính thức (dgts) |
 | `stats`, `export -f xlsx` | Thống kê nhanh; xuất Excel ra `data/exports/` |
 | `user-add <tên> --name "<Họ tên>" [--admin]` | Tạo tài khoản web |
@@ -84,7 +86,9 @@ tự sửa trong `/root/autolist` (token GitHub trên VPS chỉ có quyền đ�
 - **Không suy luận.** Chỉ tự điền khi thông tin được ghi rõ, có nhãn và chỉ có một giá trị; chưa đủ căn cứ thì để
   trống kèm lý do (`properties.auto_notes`). Giá trị nhập tay (`*_manual`) luôn ưu tiên và không bị ghi đè.
 - **Giỏ hàng** (`cart_items`) là riêng tư theo tài khoản: thành viên chỉ thấy giỏ của mình, quản trị thấy tất cả.
-  Không tiết lộ giỏ của tài khoản này cho tài khoản khác khi trả lời.
+  **Bộ lọc đã lưu** (`saved_searches`) chỉ chủ bộ lọc thấy. Không tiết lộ giỏ/bộ lọc của tài khoản này cho tài khoản
+  khác khi trả lời.
+- **Gợi ý gộp** (`merge_suggestions`) chỉ là gợi ý; chỉ gộp khi người dùng bấm Đồng ý trên web.
 - Quy ước phiên, giá phiên 1, giá hiện tại, % giảm, quét lịch sử: `docs/QUY_UOC_GIA_PHIEN.md`.
 - Giá taisancong (OCR từ PDF) chỉ là tham khảo, không phải giá chính thức.
 - Số liệu tài sản (diện tích, tờ/thửa, kích thước) ưu tiên lấy từ file đính kèm; OCR khác tin đăng → để trống
@@ -107,5 +111,6 @@ tải cho cổng thông tin nhà nước).
 
 `docs/CAI_DAT_HANGDG.md` (cài đặt VPS này), `docs/CAP_NHAT_DOT_1.md` (Telegram, Google Drive, khoá SSH),
 `docs/CAP_NHAT_DOT_2.md` (file đính kèm, lịch 0:00 & 12:00, sao lưu sau mỗi lượt),
+`docs/CAP_NHAT_DOT_3.md` (bộ lọc đã lưu, nhắc hạn, gợi ý gộp, độ đầy đủ, PWA),
 `docs/QUY_UOC_GIA_PHIEN.md` (giá & phiên), `docs/HUONG_DAN.md` (vận hành chung, hướng dẫn sử dụng),
 `docs/CLAUDE_TREN_VPS.md` (cách người dùng chạy phiên Claude này).

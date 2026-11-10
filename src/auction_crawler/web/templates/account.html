@@ -9,4 +9,28 @@
   <label>Mật khẩu mới (≥ 8 ký tự)<input type="password" name="new" required minlength="8" autocomplete="new-password"></label>
   <button class="btn primary">Đổi mật khẩu</button>
 </form>
+
+<section class="card stack narrow" id="telegram">
+  <h2>Telegram cá nhân</h2>
+  <p class="small muted">Nhận riêng tài sản mới theo <a class="link" href="/searches">bộ lọc đã lưu</a> và nhắc hạn (giỏ hàng sắp hết hạn đăng ký, việc sắp quá hạn). Chỉ bạn nhận được.</p>
+  {% if not tg_ready %}
+  <p class="small">Quản trị chưa cài bot Telegram cho hệ thống (Phần B – CAP_NHAT_DOT_1.md).</p>
+  {% elif user.tg_chat_id %}
+  <p>✅ Đã liên kết.</p>
+  <form method="post" action="/account/telegram"><input type="hidden" name="csrf" value="{{ csrf }}">
+    <button name="action" value="unlink" class="btn small">Huỷ liên kết</button></form>
+  {% elif user.tg_link_code %}
+  <ol class="small">
+    <li>Mở Telegram, tìm bot {% if bot %}<b>@{{ bot }}</b> (<a class="link" href="https://t.me/{{ bot }}?start={{ user.tg_link_code }}" target="_blank">mở bot</a>){% else %}của hệ thống{% endif %}.</li>
+    <li>Gửi cho bot: <code>/start {{ user.tg_link_code }}</code></li>
+    <li>Quay lại đây bấm <b>Kiểm tra</b>.</li>
+  </ol>
+  <form method="post" action="/account/telegram"><input type="hidden" name="csrf" value="{{ csrf }}">
+    <button name="action" value="check" class="btn primary small">Kiểm tra</button>
+    <button name="action" value="code" class="btn small">Tạo mã khác</button></form>
+  {% else %}
+  <form method="post" action="/account/telegram"><input type="hidden" name="csrf" value="{{ csrf }}">
+    <button name="action" value="code" class="btn primary small">Liên kết Telegram</button></form>
+  {% endif %}
+</section>
 {% endblock %}

@@ -83,19 +83,48 @@ def discover_chats(token: str, transport: httpx.BaseTransport | None = None) -> 
 
 
 def send(settings: Settings, text: str, transport: httpx.BaseTransport | None = None) -> bool:
-    """Gửi tin (HTML). Trả False nếu chưa cấu hình hoặc lỗi - không bao giờ ném lỗi."""
+    """Gửi tin (HTML) vào nhóm chung. Trả False nếu chưa cấu hình hoặc lỗi - không bao giờ ném lỗi."""
+    return send_to(settings, load_config(settings).get("chat_id"), text, transport)
+
+
+def send_to(settings: Settings, chat_id: str | None, text: str, transport: httpx.BaseTransport | None = None) -> bool:
+    """Gửi tin (HTML) tới một cuộc trò chuyện cụ thể (vd Telegram cá nhân của 1 tài khoản)."""
     cfg = load_config(settings)
-    if not (cfg.get("token") and cfg.get("chat_id")):
+    if not (cfg.get("token") and chat_id):
         return False
     ok = True
     for part in [text[i:i + MAX_LEN] for i in range(0, len(text), MAX_LEN)] or [""]:
         try:
-            _call(cfg["token"], "sendMessage", transport, chat_id=cfg["chat_id"], text=part,
+            _call(cfg["token"], "sendMessage", transport, chat_id=chat_id, text=part,
                   parse_mode="HTML", disable_web_page_preview=True)
         except Exception as e:  # noqa: BLE001
             log.warning("Gửi Telegram lỗi: %r", e)
             ok = False
     return ok
+
+
+def recent_messages(settings: Settings, transport: httpx.BaseTransport | None = None) -> list[dict]:
+    """Tin nhắn riêng gần đây gửi tới bot: [{chat_id, text, name}] (để liên kết tài khoản bằng mã /start)."""
+    cfg = load_config(settings)
+    if not cfg.get("token"):
+        return []
+    out = []
+    for u in _call(cfg["token"], "getUpdates", transport, timeout=0, allowed_updates=["message"]):
+        m = u.get("message") or {}
+        chat = m.get("chat") or {}
+        if chat.get("type") == "private" and m.get("text"):
+            out.append({"chat_id": str(chat["id"]), "text": m["text"], "name": chat.get("first_name") or ""})
+    return out
+
+
+def bot_username(settings: Settings, transport: httpx.BaseTransport | None = None) -> str | None:
+    cfg = load_config(settings)
+    if not cfg.get("token"):
+        return None
+    try:
+        return get_me(cfg["token"], transport).get("username")
+    except Exception:  # noqa: BLE001
+        return None
 
 
 def esc(s: Any) -> str:

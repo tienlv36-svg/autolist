@@ -20,14 +20,16 @@ from starlette.middleware.sessions import SessionMiddleware
 from ..config import get_settings
 from ..attachments import NoticeFile
 from ..realestate.db import (CATEGORIES, CartItem, EDITABLE, MONEY_FIELDS, OWNER_TYPES, PRIORITIES, SALE_FORMS, TASK_STATUS, Activity,
-                             Comment, FileView, Property, PropertyFile, PropertyNotice, Task, User)
+                             Comment, FileView, MergeSuggestion, Property, PropertyFile, PropertyNotice, Task, User)
 from ..storage import AssetRow, NoticeRow, Repository
 from ..normalize import PROVINCE_MERGE, parse_vnd
 from ..realestate.extract import parse_number
 from . import fmt
 from .auth import LoginRequired, authenticate, client_ip, login_blocked, record_login, check_csrf, csrf_token, current_user, hash_password, load_secret
-from .queries import SORTS, Filters, build_query
+from . import extra
+from .queries import MISSING, SORTS, Filters, build_query
 from .sourcedocs import needs_sync, sync_source_docs
+from ..alerts import count_reminders
 
 log = logging.getLogger(__name__)
 DOC_METHODS = {"text": "đọc chữ", "docx": "đọc chữ", "ocr": "OCR", "none": "không đọc được",
@@ -71,6 +73,8 @@ def create_app(repo: Repository | None = None, media_root: Path | None = None,
         if user is not None and "cart_count" not in ctx:
             with repo.session() as s:
                 ctx["cart_count"] = s.scalar(select(func.count(CartItem.id)).where(CartItem.user_id == user.id)) or 0
+                ctx["merge_count"] = s.scalar(select(func.count(MergeSuggestion.id))
+                                              .where(MergeSuggestion.status == "pending")) or 0
         return tpl.TemplateResponse(request, name, {"user": user, "csrf": csrf_token(request), **ctx})
 
     def my_cart_ids(s, user: User) -> set[int]:
@@ -112,7 +116,10 @@ def create_app(repo: Repository | None = None, media_root: Path | None = None,
     @app.get("/account", response_class=HTMLResponse)
     def account(request: Request, msg: str = ""):
         with repo.session() as s:
-            return render(request, "account.html", current_user(request, s), msg=msg)
+            from ..notify import is_configured
+            u = current_user(request, s)
+            return render(request, "account.html", u, msg=msg, tg_ready=is_configured(settings),
+                          bot=app.state.get_bot_name() if u.tg_link_code else None)
 
     @app.post("/account")
     def account_save(request: Request, csrf: str = Form(""), old: str = Form(...), new: str = Form(...)):
@@ -141,7 +148,8 @@ def create_app(repo: Repository | None = None, media_root: Path | None = None,
             base_qs = re.sub(r"(^|&)page=\d+", "", qs).lstrip("&")
             return render(request, "list.html", user, f=f, items=items, total=total, provinces=provinces,
                           wards=wards, page=f.page, pages=max(1, -(-total // PAGE_SIZE)), base_qs=base_qs,
-                          now=datetime.now(), in_cart=my_cart_ids(s, user))
+                          now=datetime.now(), in_cart=my_cart_ids(s, user), MISSING=MISSING,
+                          remind_n=count_reminders(s, user, datetime.now()))
 
     def _wards(s, province: str) -> list[tuple[str, int]]:
         w = func.coalesce(Property.ward_manual, Property.ward)
@@ -175,7 +183,7 @@ def create_app(repo: Repository | None = None, media_root: Path | None = None,
             syncing.discard(pid)
 
     @app.get("/p/{pid}", response_class=HTMLResponse)
-    def detail(request: Request, pid: int, bg: BackgroundTasks, edit: int = 0):
+    def detail(request: Request, pid: int, bg: BackgroundTasks, edit: int = 0, msg: str = ""):
         with repo.session() as s:
             user = current_user(request, s)
             p = _get_prop(s, pid)
@@ -221,7 +229,7 @@ def create_app(repo: Repository | None = None, media_root: Path | None = None,
                            key=lambda f: (-sess_no.get(f.notice_id, 0), f.filename))
             return render(request, "detail.html", user, p=p, links=links, sessions=sessions, ocr_refs=ocr_refs, latest=latest, assets=assets,
                           folders=folders, users=users, views=views, comments=comments, tasks=tasks, acts=acts,
-                          edit=edit, now=datetime.now(), today=date.today(), docs_pending=docs_pending,
+                          edit=edit, now=datetime.now(), today=date.today(), docs_pending=docs_pending, msg=msg,
                           saved=saved, sess_no=sess_no, METHODS=DOC_METHODS,
                           my_cart=my_cart, cart_others=cart_others)
 
@@ -512,10 +520,9 @@ def create_app(repo: Repository | None = None, media_root: Path | None = None,
 
     # ------------------------------------------------------------------ gộp / tách phiên
     @app.post("/p/{pid}/detach/{nid}")
-    def detach(request: Request, pid: int, nid: int, csrf: str = Form("")):
+    def detach(request: Request, pid: int, nid: int, bg: BackgroundTasks, csrf: str = Form("")):
         """Tách 1 thông báo (gộp nhầm) thành tài sản riêng; linker sẽ giữ nguyên lựa chọn này."""
         check_csrf(request, csrf)
-        from ..realestate.linker import rebuild
         with repo.Session.begin() as s:
             user = current_user(request, s)
             p = _get_prop(s, pid)
@@ -532,27 +539,23 @@ def create_app(repo: Repository | None = None, media_root: Path | None = None,
             pn.property_id, pn.manual, pn.link_source = newp.id, True, "manual"
             log_act(s, pid, user, "detach", f"Tách thông báo #{nid} thành tài sản #{newp.id}")
             new_id = newp.id
-        rebuild(repo)
-        return back(f"/p/{new_id}")
+        bg.add_task(extra.rebuild_in_background, settings, repo)   # gom phiên lại ở nền (dữ liệu lớn mất vài phút)
+        return back(f"/p/{new_id}?msg=rebuild")
 
     @app.post("/p/{pid}/merge")
-    def merge(request: Request, pid: int, csrf: str = Form(""), target: int = Form(...)):
+    def merge(request: Request, pid: int, bg: BackgroundTasks, csrf: str = Form(""), target: int = Form(...)):
         """Gộp tài sản này vào tài sản #target (cùng một BĐS đấu giá lại)."""
         check_csrf(request, csrf)
-        from ..realestate.linker import rebuild
         with repo.Session.begin() as s:
             user = current_user(request, s)
             _get_prop(s, pid)
             _get_prop(s, target)
             if target == pid:
                 return back(f"/p/{pid}")
-            for pn in s.scalars(select(PropertyNotice).where(PropertyNotice.property_id.in_([pid, target]))):
-                pn.property_id, pn.manual = target, True
-                if pn.link_source in (None, "auto"):
-                    pn.link_source = "manual"
+            extra.merge_into(s, pid, target)
             log_act(s, target, user, "merge", f"Gộp tài sản #{pid} vào #{target}")
-        rebuild(repo)   # chuyển nhận xét/file/việc của #pid sang #target, tính lại phiên & giá
-        return back(f"/p/{target}")
+        bg.add_task(extra.rebuild_in_background, settings, repo)   # chuyển nhận xét/file/việc, tính lại phiên & giá
+        return back(f"/p/{target}?msg=rebuild")
 
     # ------------------------------------------------------------------ xuất Excel theo bộ lọc
     @app.get("/export.xlsx")
@@ -632,5 +635,23 @@ def create_app(repo: Repository | None = None, media_root: Path | None = None,
                     return back("/admin/users?msg=Mật khẩu ≥ 8 ký tự")
                 u.password_hash = hash_password(password)
         return back(f"/admin/users?msg=Đã cập nhật {u.username}")
+
+    extra.register(app, repo, settings, render, back, log_act)
+
+    # ------------------------------------------------------------------ cài lên điện thoại (PWA)
+    @app.get("/manifest.webmanifest")
+    def manifest():
+        return FileResponse(HERE / "static" / "manifest.webmanifest", media_type="application/manifest+json")
+
+    @app.get("/sw.js")
+    def service_worker():          # phục vụ ở gốc để service worker có phạm vi toàn trang
+        return FileResponse(HERE / "static" / "sw.js", media_type="application/javascript",
+                            headers={"Cache-Control": "no-cache", "Service-Worker-Allowed": "/"})
+
+    @app.get("/offline", response_class=HTMLResponse)
+    def offline():
+        return HTMLResponse("<!doctype html><meta charset=utf-8><meta name=viewport content='width=device-width'>"
+                            "<link rel=stylesheet href='/static/app.css?v=1'><main class=wrap><div class=card>"
+                            "<h1>Mất kết nối mạng</h1><p>Kiểm tra mạng rồi tải lại trang.</p></div></main>")
 
     return app

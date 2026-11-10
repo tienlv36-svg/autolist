@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% from "_macros.html" import deadline, parcel_or_address %}
+{% block title %}Nhắc hạn{% endblock %}
+{% block content %}
+<h1>⏰ Nhắc hạn</h1>
+<p class="small muted">Hằng ngày gửi vào Telegram cá nhân (nếu đã <a class="link" href="/account#telegram">liên kết</a>).</p>
+{% macro plist(items) %}
+<div class="tblwrap"><table class="tbl resp"><tbody>
+{% for p in items %}<tr><td data-label="Tài sản"><div><a href="/p/{{ p.id }}">#{{ p.id }} {{ p.title[:100] }}</a><div class="small muted">{{ parcel_or_address(p) }}</div></div></td>
+<td data-label="Giá">{{ fmt.money(p.eff('price_latest')) if p.eff('price_latest') else '—' }}</td>
+<td data-label="Hạn ĐK"><div>{{ fmt.dt(p.registration_end) }} {{ deadline(p.registration_end) }}</div></td></tr>{% endfor %}
+</tbody></table></div>
+{% endmacro %}
+<section class="card"><h2>Trong giỏ hàng của tôi – hết hạn đăng ký trong 3 ngày</h2>
+{% if r.cart %}{{ plist(r.cart) }}{% else %}<p class="muted">Không có.</p>{% endif %}</section>
+<section class="card"><h2>Việc được giao sắp / đã quá hạn</h2>
+{% if r.tasks %}<ul>{% for t in r.tasks %}<li><b>{{ t.title }}</b> – hạn {{ fmt.dt(t.due_date) }}{% if t.due_date < now.date() %} <span class="dl expired">quá hạn</span>{% endif %}
+{% if t.property_id %} – <a class="link" href="/p/{{ t.property_id }}">#{{ t.property_id }}</a>{% endif %}</li>{% endfor %}</ul>
+{% else %}<p class="muted">Không có.</p>{% endif %}</section>
+{% if user.role == 'admin' %}
+<section class="card"><h2>Ưu tiên Cao / Rất cao – hết hạn đăng ký trong 3 ngày</h2>
+{% if r.priority %}{{ plist(r.priority) }}{% else %}<p class="muted">Không có.</p>{% endif %}</section>
+{% endif %}
+{% endblock %}

@@ -24,6 +24,20 @@ SORTS = {
 }
 
 
+_LAND = lambda: [Property.category.in_(["dat", "nha_dat"])]  # noqa: E731
+# Thiếu dữ liệu (trang Độ đầy đủ + bộ lọc ?missing=...): khoá -> (nhãn, () -> (điều kiện thiếu, phạm vi áp dụng))
+MISSING = {
+    "price": ("Giá hiện tại", lambda: (eff("price_latest").is_(None), [])),
+    "land_area": ("Tổng diện tích đất", lambda: (eff("land_area").is_(None), _LAND())),
+    "floor_area": ("Diện tích sàn (nhà + đất)", lambda: (eff("floor_area").is_(None), [Property.category == "nha_dat"])),
+    "parcel": ("Số tờ / số thửa", lambda: (eff("parcel_no").is_(None), _LAND())),
+    "ward": ("Xã / phường", lambda: (eff("ward").is_(None), [])),
+    "province": ("Tỉnh / thành phố", lambda: (eff("province").is_(None), [])),
+    "price_first": ("Giá phiên 1 (tài sản nhiều phiên)", lambda: (eff("price_first").is_(None),
+                                                                 [Property.session_count > 1])),
+}
+
+
 def _by_deadline():
     """Còn hạn đăng ký trước (hạn gần nhất lên đầu) -> đã hết hạn (mới hết hạn trước) -> không có hạn."""
     now = datetime.now()
@@ -51,6 +65,7 @@ class Filters:
     multi_session: bool = False
     mine: bool = False                  # được giao cho tôi
     cart: bool = False                  # trong giỏ hàng CỦA TÔI
+    missing: str = ""                   # thiếu dữ liệu (khoá trong MISSING)
     sort: str = "han_dang_ky"
     page: int = 1
 
@@ -70,6 +85,7 @@ class Filters:
             priority_min=int(pm) if pm is not None else None, verified=qp.get("verified") or "",
             open_only=qp.get("open_only") == "1", discounted=qp.get("discounted") == "1",
             multi_session=qp.get("multi_session") == "1", mine=qp.get("mine") == "1", cart=qp.get("cart") == "1",
+            missing=qp.get("missing") if qp.get("missing") in MISSING else "",
             sort=qp.get("sort") if qp.get("sort") in SORTS else "han_dang_ky",
             page=max(1, int(num("page") or 1)),
         )
@@ -118,6 +134,9 @@ def build_query(f: Filters, user_id: int):
             Task.assignee_id == user_id, Task.status.in_(["moi", "dang_lam"]))))
     if f.cart:                          # luôn là giỏ của người đang xem (kể cả quản trị)
         conds.append(Property.id.in_(select(CartItem.property_id).where(CartItem.user_id == user_id)))
+    if f.missing:
+        cond, scope = MISSING[f.missing][1]()
+        conds += [cond, *scope]
     if conds:
         q = q.where(and_(*conds))
     return q.order_by(*SORTS[f.sort][1](), Property.id.desc())
