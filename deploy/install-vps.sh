@@ -171,5 +171,9 @@ if [ "$MODE" = domain ]; then
 else
   echo " XONG. Mở trình duyệt:  https://$PUBLIC_IP   (cảnh báo chứng chỉ là bình thường)"
 fi
-echo " Bước tiếp theo: lấy dữ liệu lần đầu – sudo -u auction bash $APP/deploy/first-load.sh (trong tmux)"
+if grep -q "HOÀN TẤT" "$APP/data/first-load.log" 2>/dev/null; then
+  echo " Đã cập nhật xong – dữ liệu được giữ nguyên. Lịch tự động: systemctl is-active auction-scheduler"
+else
+  echo " Bước tiếp theo: lấy dữ liệu lần đầu – sudo -u auction bash $APP/deploy/first-load.sh (trong tmux)"
+fi
 echo "==================================================================="
