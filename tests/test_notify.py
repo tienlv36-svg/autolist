@@ -81,10 +81,26 @@ def test_zero_found_warns(settings, monkeypatch):
     import auction_crawler.realestate.linker as lk
     monkeypatch.setattr(pl, "tag_official_types", lambda *a, **k: {})
     monkeypatch.setattr(lk, "rebuild", lambda *a, **k: {})
-    sent = []
+    sent, backups = [], []
     monkeypatch.setattr(scheduler, "send", lambda s, t: sent.append(t) or True)
+    monkeypatch.setattr(scheduler, "run_backup", lambda s: backups.append(1) or {"ok": True})
+    monkeypatch.setattr(scheduler, "_docs_then_rebuild", lambda s, r: None)
     rep = scheduler.run_once(settings, repo)
     assert "không đọc được tin nào" in rep["text"] and rep["text"].startswith("⚠️") and sent
+    assert backups == [1]                     # sao lưu ngay sau mỗi lượt
+
+
+def test_report_docs_and_backup_failure(settings):
+    from auction_crawler.attachments import DocStats
+    repo = Repository(settings.db_url)
+    repo.init_db()
+    ds = DocStats(notices=120, files=300, bytes=50 * 1048576, ocr_files=40, with_info=75,
+                  stopped="hết thời gian của lượt – đọc tiếp ở lượt sau", details=["còn 9.000 tin chưa đọc file"])
+    rep = {"started": datetime(2026, 11, 11, 12, 0), "minutes": 300, "warnings": [], "sources": {},
+           "steps": {"docs": {"ok": True, "result": ds}}, "backup": {"ok": False, "error": "disk full"}}
+    txt = scheduler.format_report(settings, repo, rep)
+    assert "File đính kèm: đọc 120 tin, lưu 300 file (50 MB, OCR 40), có số liệu cho <b>75</b>" in txt
+    assert "còn 9.000 tin chưa đọc file" in txt and "Sao lưu sau lượt quét LỖI: disk full" in txt
 
 
 def test_run_lock_blocks_second_run(settings):

@@ -48,13 +48,15 @@ def run_lock(settings: Settings) -> Iterator[None]:
 
 def run_once(settings: Settings, repo: Repository) -> dict[str, Any]:
     """Một lượt đầy đủ: crawl tăng dần mọi nguồn -> gắn loại TS chính thức (dgts, 14 ngày gần nhất)
-    -> OCR giá (nếu bật) -> đánh dấu tin trùng giữa các nguồn -> dựng lại tài sản BĐS -> báo Telegram."""
+    -> OCR giá (nếu bật) -> đánh dấu tin trùng giữa các nguồn -> dựng lại tài sản BĐS -> quét lịch sử giá
+    -> tải + đọc file đính kèm -> sao lưu -> báo Telegram."""
     t0 = time.time()
     started = datetime.now()
     report: dict[str, Any] = {"sources": {}, "steps": {}, "warnings": [], "started": started}
     try:
         with run_lock(settings):
             _run_steps(settings, repo, report)
+            report["backup"] = run_backup(settings)      # sao lưu ngay sau mỗi lượt quét
     except AlreadyRunning as e:
         report["warnings"].append(str(e) + " – bỏ qua lượt này")
         log.warning("%s", e)
@@ -89,6 +91,7 @@ def _run_steps(settings: Settings, repo: Repository, report: dict[str, Any]) -> 
         ("dedupe", lambda: find_duplicates(repo)),
         ("re-build", lambda: rebuild(repo)),          # tài sản BĐS: gom phiên, giá, % giảm
         ("history", lambda: _history_then_rebuild(settings, repo, int(sch.get("history_limit", 500)))),
+        ("docs", lambda: _docs_then_rebuild(settings, repo)),   # tải + đọc file đính kèm, ưu tiên số liệu tài liệu
     ]
     for label, fn in steps:
         try:
@@ -109,6 +112,35 @@ def _history_then_rebuild(settings: Settings, repo: Repository, limit: int):
     if st.found_notices:
         rebuild(repo)
     return st
+
+
+def _docs_then_rebuild(settings: Settings, repo: Repository):
+    from .attachments import fetch_docs
+    from .realestate.linker import rebuild
+    sch = settings.schedule
+    minutes = float(sch.get("docs_minutes", 300))
+    if minutes <= 0:
+        return None
+    st = fetch_docs(settings, repo, minutes=minutes, max_disk_pct=float(sch.get("docs_max_disk_pct", 85)),
+                    ocr_max_pages=int(sch.get("ocr_max_pages", 30)))
+    if st.notices:
+        rebuild(repo)
+    return st
+
+
+def run_backup(settings: Settings) -> dict[str, Any]:
+    """Chạy deploy/backup.sh (CSDL + file tải lên + cấu hình; đẩy Google Drive nếu đã cấu hình)."""
+    import subprocess
+    script = settings.path("deploy/backup.sh")
+    if not script.exists():
+        return {"ok": False, "error": "không thấy deploy/backup.sh"}
+    try:
+        r = subprocess.run(["bash", str(script)], capture_output=True, text=True, timeout=3 * 3600)
+        log.info("Sao lưu: %s", (r.stdout or r.stderr).strip()[-300:])
+        return {"ok": r.returncode == 0, "error": None if r.returncode == 0 else (r.stderr or r.stdout)[-300:]}
+    except Exception as e:  # noqa: BLE001
+        log.exception("sao lưu lỗi")
+        return {"ok": False, "error": repr(e)[:300]}
 
 
 def format_report(settings: Settings, repo: Repository, report: dict[str, Any]) -> str:
@@ -139,6 +171,17 @@ def format_report(settings: Settings, repo: Repository, report: dict[str, Any]) 
     if hs is not None and getattr(hs, "scanned", 0):
         lines.append(f"• Lịch sử giá: quét {num(hs.scanned)} tài sản còn hạn, thêm <b>{num(hs.found_notices)}</b> "
                      f"phiên cũ cho {num(hs.props_updated)} tài sản")
+    ds = (steps.get("docs") or {}).get("result")
+    if ds is not None and (getattr(ds, "notices", 0) or getattr(ds, "stopped", None)):
+        mb = getattr(ds, "bytes", 0) / 1048576
+        lines.append(f"• File đính kèm: đọc {num(ds.notices)} tin, lưu {num(ds.files)} file ({mb:.0f} MB, "
+                     f"OCR {num(ds.ocr_files)}), có số liệu cho <b>{num(ds.with_info)}</b> tin"
+                     + (f"; {esc(ds.details[-1])}" if ds.details else ""))
+        if ds.stopped:
+            warns.append(f"File đính kèm: {ds.stopped}")
+    bkr = report.get("backup")
+    if bkr is not None and not bkr.get("ok"):
+        warns.append(f"Sao lưu sau lượt quét LỖI: {bkr.get('error')}")
     try:
         with repo.session() as ss:
             total = ss.scalar(select(func.count(Property.id))) or 0

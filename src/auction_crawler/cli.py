@@ -13,7 +13,7 @@ from rich.console import Console
 from rich.logging import RichHandler
 from rich.table import Table
 
-from .config import get_settings
+from .config import DEFAULT_CRON, get_settings
 from .sources import all_sources, get_source
 from .storage import Repository
 
@@ -316,6 +316,41 @@ def history_scan(limit: int = typer.Option(500, "--limit", "-n")):
                   f"{st.props_updated} tài sản, lỗi {st.errors}")
 
 
+@app.command("docs-fetch")
+def docs_fetch(minutes: float = typer.Option(300, "--minutes", "-m", help="Giới hạn thời gian (phút)"),
+               limit: int = typer.Option(100_000, "--limit", "-n", help="Tối đa N tin"),
+               max_disk: float = typer.Option(85, "--max-disk", help="Dừng khi ổ cứng đã dùng >= %")):
+    """Tải, LƯU và đọc file đính kèm của tin BĐS (còn hạn đăng ký trước), rồi gom phiên lại
+    (số liệu trong tài liệu được ưu tiên). Chạy lâu -> dùng tmux."""
+    from .attachments import fetch_docs
+    from .realestate.linker import rebuild
+    from .scheduler import run_lock
+
+    s, repo = _setup()
+    with run_lock(s):
+        st = fetch_docs(s, repo, minutes=minutes, limit=limit, max_disk_pct=max_disk,
+                        ocr_max_pages=int(s.schedule.get("ocr_max_pages", 30)))
+        if st.notices:
+            rebuild(repo)
+    console.print(f"Đọc {st.notices} tin, lưu {st.files} file ({st.bytes / 1048576:.0f} MB), OCR {st.ocr_files}, "
+                  f"có số liệu {st.with_info}, lỗi {st.errors}" + (f" – {st.stopped}" if st.stopped else "")
+                  + (f"; {st.details[-1]}" if st.details else ""))
+
+
+@app.command("docs-reparse")
+def docs_reparse():
+    """Trích lại thông số từ chữ đã lưu của file đính kèm (không tải lại), rồi gom phiên lại."""
+    from .attachments import reparse
+    from .realestate.linker import rebuild
+    from .scheduler import run_lock
+
+    s, repo = _setup()
+    with run_lock(s):
+        n = reparse(repo, s)
+        rebuild(repo)
+    console.print(f"Đã trích lại {n} tin")
+
+
 @app.command("run-now")
 def run_now():
     """Chạy ngay một lượt như lịch tự động (thu thập + gom phiên + báo Telegram)."""
@@ -372,7 +407,7 @@ def schedule(cron: str = typer.Option(None, help="Biểu thức cron, mặc đ�
     from .scheduler import run_scheduler
 
     s, repo = _setup()
-    run_scheduler(s, repo, cron or s.schedule.get("cron", "0 2 * * *"))
+    run_scheduler(s, repo, cron or s.schedule.get("cron", DEFAULT_CRON))
 
 
 if __name__ == "__main__":

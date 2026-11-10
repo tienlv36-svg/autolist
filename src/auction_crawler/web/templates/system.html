@@ -23,6 +23,9 @@
       <dt>Tài sản BĐS</dt><dd>{{ '{:,}'.format(st.props[0]).replace(',', '.') }} <span class="muted small">({{ st.props[1] }} có giá, {{ st.props[3] }} có % giảm, {{ st.props[2] or 0 }} đã xác thực)</span></dd>
       <dt>CSDL</dt><dd>{{ fmt.size(st.db_size) or '—' }}</dd>
       <dt>File tải lên</dt><dd>{{ fmt.size(st.media_size) or '0 B' }}</dd>
+      <dt>File đính kèm đã lưu</dt><dd>{{ fmt.num(st.docs.files) }} file · {{ fmt.size(st.docs.size) or '0 B' }} (OCR {{ fmt.num(st.docs.ocr) }})</dd>
+      <dt>Tin đã đọc file</dt><dd>{{ fmt.num(st.docs.done) }} · còn {{ fmt.num(st.docs.todo) }} (tài sản còn hạn: {{ fmt.num(st.docs.todo_open) }})</dd>
+      <dt>Tài sản có số liệu từ tài liệu</dt><dd>{{ fmt.num(st.docs.props_doc) }}</dd>
     </dl>
   </section>
   <section class="card">

@@ -28,14 +28,18 @@ class CrawlSettings(BaseModel):
     stop_when_page_all_seen: bool = True
 
 
+DEFAULT_CRON = "0 0,12 * * *"     # 2 lượt/ngày: 0:00 và 12:00 (giờ Việt Nam)
+
+
 class Settings(BaseModel):
     db_url: str = "sqlite:///data/auction.db"
     raw_cache_dir: str | None = "data/raw"
     export_dir: str = "data/exports"
+    data_dir: str = "data"            # nơi lưu file đính kèm (data/files/...)
     log_level: str = "INFO"
     http: HttpSettings = Field(default_factory=HttpSettings)
     crawl: CrawlSettings = Field(default_factory=CrawlSettings)
-    schedule: dict[str, Any] = Field(default_factory=lambda: {"cron": "0 2 * * *", "run_on_start": False})
+    schedule: dict[str, Any] = Field(default_factory=lambda: {"cron": DEFAULT_CRON, "run_on_start": False})
 
     def path(self, p: str) -> Path:
         q = Path(p)

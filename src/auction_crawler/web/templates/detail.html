@@ -61,6 +61,7 @@
       <dd>{% if v in (none, '') %}<span class="empty-v">— chưa có</span>
         {% elif name.endswith('area') %}{{ fmt.area(v) }}{% elif name in ('width','length') %}{{ fmt.num(v, ' m') }}{% else %}{{ v }}{% endif %}
         {% if p[name ~ '_manual'] not in (none, '') %}<span class="tag manual" title="Giá trị từ tin gốc: {{ p[name] if p[name] is not none else 'không có' }}">nhập tay</span>
+        {% elif v not in (none, '') and (p.field_sources or {}).get(name) %}<span class="tag doc" title="Ghi rõ trong file đính kèm (thông báo/quy chế){% if 'OCR' in p.field_sources[name] %} – đọc bằng OCR, nên đối chiếu file{% endif %}">từ {{ p.field_sources[name] }}</span>
         {% elif v not in (none, '') %}<span class="tag auto" title="Ghi rõ trong tin đăng">từ tin gốc</span>{% endif %}</dd></div>
     {% endfor %}
     <div><dt>Người có tài sản</dt><dd>{{ p.owner_name or '—' }}</dd></div>
@@ -140,6 +141,18 @@
   </form>
   {% if docs_pending %}<p class="small muted">⏳ Đang lấy tài liệu gốc (quy chế, thông báo…) từ website nguồn – tải lại trang sau ít giây.</p>{% endif %}
   {% if not folders %}<p class="muted">Chưa có file.</p>{% endif %}
+  {% if saved %}
+  <h3 class="folder">🗄 File đính kèm đã lưu trên máy chủ <span class="muted small">({{ saved|length }})</span></h3>
+  <table class="tbl small files">
+  {% for f in saved %}
+    <tr><td><a href="/nf/{{ f.id }}" target="_blank">{{ f.filename }}</a>{% if f.error and not f.path %} <span class="tag warn" title="{{ f.error }}">lỗi tải</span>{% endif %}</td>
+      <td>Phiên {{ sess_no.get(f.notice_id, '?') }}</td>
+      <td>{{ fmt.size(f.size) }}</td>
+      <td>{{ METHODS.get(f.method, '') }}{% if f.chars %} · <a class="link" href="/nf/{{ f.id }}?txt=1" target="_blank">xem chữ</a>{% endif %}</td>
+      <td>{% if f.path %}<a href="/nf/{{ f.id }}?download=1" class="link">Tải</a>{% endif %}</td></tr>
+  {% endfor %}
+  </table>
+  {% endif %}
   {% for folder, fl in folders.items() %}
   <h3 class="folder">📁 {{ folder }} <span class="muted small">({{ fl|length }})</span></h3>
   {% set imgs = fl|selectattr('kind', 'equalto', 'image')|list %}

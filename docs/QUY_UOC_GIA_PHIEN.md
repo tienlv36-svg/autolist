@@ -49,7 +49,7 @@ Nếu tin ghi **lần N** mà phần mềm có **ít hơn N phiên** (các phiê
 
 **Phạm vi:** chỉ tài sản **còn hạn đăng ký**. Tài sản đã hết hạn đăng ký **không quét**.
 
-**Khi nào quét:** trong lượt chạy tự động 2:00 sáng (sau khi thu thập và gom phiên), tối đa 500 tài sản/lượt
+**Khi nào quét:** trong mỗi lượt chạy tự động (0:00 và 12:00, sau khi thu thập và gom phiên), tối đa 500 tài sản/lượt
 (`schedule.history_limit` trong `config/settings.yaml`). Mỗi tài sản quét **1 lần**, quét lại khi tài sản có
 phiên mới. Thứ tự: tài sản **thiếu lịch sử** (tin ghi lần N > số phiên) trước → mức ưu tiên cao → sắp hết hạn
 đăng ký. Quét tay: `auction history-scan -n 1000`.
@@ -78,7 +78,32 @@ Thông báo được nhận: lưu vào hệ thống, lấy **giá chính thức*
 không bị tách khi gom lại. Kết quả quét hiện trên trang chi tiết (*“Quét lịch sử: tìm thêm 5 thông báo cũ…”*) và
 trong báo cáo Telegram hằng ngày.
 
-## 5. Việc của người dùng
+## 5. Số liệu lấy từ file đính kèm (thông báo, quy chế đấu giá)
+
+Mỗi lượt tự động (0:00 và 12:00), sau khi thu thập và quét lịch sử, phần mềm **tải về và lưu lại mọi file đính
+kèm** của tin BĐS (thư mục `data/files/<nguồn>/<năm-tháng>/<mã tin>/`, không xoá), rồi **đọc hết** chữ trong file:
+PDF có lớp chữ đọc thẳng; PDF scan / ảnh nhận dạng bằng OCR (tối đa 30 trang/file); `.docx` đọc trực tiếp; file
+khác (zip, rar, xls…) chỉ lưu. Thứ tự: tin của tài sản **còn hạn đăng ký** trước (ưu tiên cao, sắp hết hạn), sau đó
+tin cũ hơn. Mỗi lượt đọc tối đa 300 phút (`schedule.docs_minutes`), phần còn lại đọc ở lượt sau; ổ cứng dùng ≥ 85%
+thì dừng tải và báo Telegram.
+
+**Trích thông số** (tổng DT đất, đất ở, đất khác, DT sàn, chiều ngang/dài, số tờ, số thửa) chỉ từ **đoạn mô tả tài
+sản** của file (“Tên tài sản…”, “Tài sản đấu giá…” đến trước “Giá khởi điểm”), theo đúng quy tắc thận trọng: có nhãn
+rõ và chỉ một giá trị; file nhiều thửa/lô → không lấy.
+
+| Trường hợp | Kết quả |
+|---|---|
+| Tài liệu có số liệu, tin đăng không có | Dùng số trong tài liệu, nhãn **“từ tài liệu”** (hoặc **“từ tài liệu (OCR)”**) |
+| Tài liệu (đọc chữ) khác tin đăng | **Dùng số trong tài liệu**, ghi chú chênh lệch |
+| Tài liệu đọc bằng **OCR** khác tin đăng | **Để trống** (OCR có thể đọc nhầm số), ghi chú – kiểm tra file rồi nhập tay |
+| Các file / các phiên ghi khác nhau | Để trống, ghi chú |
+| Tin hoặc tài liệu gồm nhiều thửa/lô | Không dùng số liệu tài liệu |
+
+**Giá** vẫn theo mục 1–2 (giá chính thức nguồn đăng); giá đọc từ PDF chỉ để tham khảo. Giá trị **nhập tay** luôn
+được ưu tiên. Trên trang chi tiết: mục *“File đính kèm đã lưu trên máy chủ”* (mở file, xem chữ đã đọc); file nguồn
+đã lưu được mở từ máy chủ kể cả khi website nguồn gỡ.
+
+## 6. Việc của người dùng
 
 | Tình huống | Làm gì |
 |---|---|
@@ -87,3 +112,4 @@ trong báo cáo Telegram hằng ngày.
 | Hai thẻ là cùng một BĐS | Mở một thẻ, nhập số **#id** thẻ kia vào ô *Gộp vào #* |
 | Phiên “lịch sử” bị gộp sai | Bấm **Tách** ở phiên đó – lựa chọn được giữ cố định |
 | Giá trên web khác hồ sơ | Nhập tay giá đúng, rồi **✓ Xác thực** |
+| Ghi chú *“Tài liệu (OCR) và tin đăng ghi … khác nhau”* | Mở file trong *File đính kèm đã lưu*, nhập tay số đúng |

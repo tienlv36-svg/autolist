@@ -70,7 +70,7 @@ make install-browser         # (tuỳ chọn) Playwright cho tools/probe_browser
 .venv/bin/auction crawl -s dgts --since 2026-10-01   # lấy lại theo khoảng ngày (có chi tiết)
 .venv/bin/auction stats --from 2026-11-01
 .venv/bin/auction export -f xlsx                # data/exports/dau_gia_YYYYmmdd_HHMM.xlsx
-.venv/bin/auction schedule                      # chạy nền: crawl → tag-types → ocr → dedupe → re-build, mỗi ngày 2:00
+.venv/bin/auction schedule                      # chạy nền 0:00 & 12:00: crawl → … → re-build → lịch sử → file đính kèm → sao lưu
 ```
 
 ### Lấy dữ liệu lịch sử lớn (backfill) nhanh

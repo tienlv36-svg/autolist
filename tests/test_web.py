@@ -238,3 +238,22 @@ def test_deadline_sort_open_first(tmp_path):
     with repo.session() as s:
         ids = [p.id for p in s.scalars(build_query(Filters(sort="han_dang_ky"), 0)).all()]
     assert ids == [4, 2, 5, 1, 3]
+
+
+def test_detail_shows_saved_attachments_and_doc_source(env):
+    from auction_crawler.attachments import NoticeFile
+    from auction_crawler.storage import NoticeRow
+    repo, c = env
+    login(c)
+    with repo.Session.begin() as s:
+        n = s.query(NoticeRow).filter(NoticeRow.source_id == "2").one()
+        n.doc_info = {"floor_area": 95.5, "methods": {"floor_area": "text"}}
+        s.add(NoticeFile(notice_id=n.id, filename="Thong bao.pdf", url="https://x/tb.pdf", path="files/dgts/x/tb.pdf",
+                         size=2048, method="ocr", chars=500))
+    rebuild(repo)
+    with repo.session() as s:
+        pid = s.query(Property).filter(Property.session_count == 2).one().id
+    r = c.get(f"/p/{pid}")
+    assert "File đính kèm đã lưu trên máy chủ" in r.text and "Thong bao.pdf" in r.text and "xem chữ" in r.text
+    assert "từ tài liệu" in r.text and "95,5" in r.text
+    assert c.get("/nf/999999").status_code == 404

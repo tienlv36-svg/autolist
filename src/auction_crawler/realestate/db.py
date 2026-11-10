@@ -70,6 +70,7 @@ class Property(Base):
     price_first_manual: Mapped[int | None] = mapped_column(BigInteger)
     price_latest_manual: Mapped[int | None] = mapped_column(BigInteger)
     auto_notes: Mapped[list[Any]] = mapped_column(JSON, default=list)   # lý do để trống (trích xuất thận trọng)
+    field_sources: Mapped[dict[str, Any] | None] = mapped_column(JSON)  # trường lấy từ tài liệu: {tên: nguồn}
     address_manual: Mapped[str | None] = mapped_column(Text)
     land_area_manual: Mapped[float | None] = mapped_column(Float)
     residential_area_manual: Mapped[float | None] = mapped_column(Float)

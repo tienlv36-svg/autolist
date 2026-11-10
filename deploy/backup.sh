@@ -3,11 +3,13 @@
 # Giữ 14 bản trên VPS; nếu đã cấu hình Google Drive (rclone remote "gdrive") thì đẩy thêm lên Drive,
 # giữ 30 ngày. Lỗi -> báo Telegram. Trạng thái lần gần nhất ghi vào data/.last_backup.json.
 # Dùng: deploy/backup.sh [thư_mục_đích]     (mặc định /opt/autolist/backups)
-# Cron hằng ngày (sau lượt thu thập 2:00):  15 4 * * * /opt/autolist/deploy/backup.sh >> /opt/autolist/backups/backup.log 2>&1
+# Tự chạy sau MỖI lượt thu thập (0:00 và 12:00) – do auction-scheduler gọi.
+# File đính kèm đã lưu (data/files, có thể rất lớn) KHÔNG nằm trong bản sao lưu nén; nếu có file data/.drive_files
+# thì được đồng bộ dần (chỉ phần mới) lên Google Drive: <remote>:autolist-files/
 set -euo pipefail
 APP_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 DEST="${1:-$APP_DIR/backups}"
-KEEP="${KEEP:-14}"
+KEEP="${KEEP:-28}"      # 2 lượt/ngày -> 14 ngày
 REMOTE="${RCLONE_REMOTE:-gdrive}"
 REMOTE_DIR="${RCLONE_DIR:-autolist-backups}"
 REMOTE_DAYS="${RCLONE_KEEP_DAYS:-30}"
@@ -42,6 +44,9 @@ if command -v rclone >/dev/null && rclone listremotes 2>/dev/null | grep -qx "$R
   rclone copy "$FILE" "$REMOTE:$REMOTE_DIR/" --retries 3
   rclone delete "$REMOTE:$REMOTE_DIR/" --min-age "${REMOTE_DAYS}d" --include "autolist_*.tar.gz" || true
   OFFSITE=true
+  if [ -f "$APP_DIR/data/.drive_files" ] && [ -d "$APP_DIR/data/files" ]; then
+    rclone copy "$APP_DIR/data/files" "$REMOTE:autolist-files/" --retries 3 --transfers 2 || echo "(!) đồng bộ file đính kèm lỗi"
+  fi
 fi
 
 printf '{"at": "%s", "file": "%s", "size": "%s", "offsite": %s}\n' \

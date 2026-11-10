@@ -18,6 +18,7 @@ from sqlalchemy import func, select
 from starlette.middleware.sessions import SessionMiddleware
 
 from ..config import get_settings
+from ..attachments import NoticeFile
 from ..realestate.db import (CATEGORIES, EDITABLE, MONEY_FIELDS, OWNER_TYPES, PRIORITIES, SALE_FORMS, TASK_STATUS, Activity,
                              Comment, FileView, Property, PropertyFile, PropertyNotice, Task, User)
 from ..storage import AssetRow, NoticeRow, Repository
@@ -29,6 +30,8 @@ from .queries import SORTS, Filters, build_query
 from .sourcedocs import needs_sync, sync_source_docs
 
 log = logging.getLogger(__name__)
+DOC_METHODS = {"text": "đọc chữ", "docx": "đọc chữ", "ocr": "OCR", "none": "không đọc được",
+               "unsupported": "chỉ lưu"}
 HERE = Path(__file__).parent
 PAGE_SIZE = 30
 EXPORT_MAX = 20000
@@ -203,9 +206,13 @@ def create_app(repo: Repository | None = None, media_root: Path | None = None,
             tasks = s.scalars(select(Task).where(Task.property_id == pid).order_by(Task.status, Task.due_date)).all()
             acts = s.scalars(select(Activity).where(Activity.property_id == pid).order_by(Activity.at.desc()).limit(50)).all()
             ocr_refs = [(n, (n.raw or {}).get("ocr_prices")) for _, n in links if (n.raw or {}).get("ocr_prices")]
+            sess_no = {n.id: pn.session_no for pn, n in links}
+            saved = sorted(s.scalars(select(NoticeFile).where(NoticeFile.notice_id.in_(list(sess_no)))).all(),
+                           key=lambda f: (-sess_no.get(f.notice_id, 0), f.filename))
             return render(request, "detail.html", user, p=p, links=links, sessions=sessions, ocr_refs=ocr_refs, latest=latest, assets=assets,
                           folders=folders, users=users, views=views, comments=comments, tasks=tasks, acts=acts,
-                          edit=edit, now=datetime.now(), today=date.today(), docs_pending=docs_pending)
+                          edit=edit, now=datetime.now(), today=date.today(), docs_pending=docs_pending,
+                          saved=saved, sess_no=sess_no, METHODS=DOC_METHODS)
 
     @app.post("/p/{pid}/fields")
     async def save_fields(request: Request, pid: int):
@@ -346,12 +353,37 @@ def create_app(repo: Repository | None = None, media_root: Path | None = None,
                                action="download" if download else "view"))
             stored, url, name, mime = fl.stored_path, fl.source_url, fl.filename, fl.mime
         if url:
-            return RedirectResponse(url, status_code=302)
+            with repo.session() as s:      # đã lưu bản sao trên máy chủ -> mở bản sao (nguồn có thể gỡ file)
+                nf = s.scalar(select(NoticeFile).where(NoticeFile.url == url, NoticeFile.path.is_not(None)).limit(1))
+            if nf is None or not (local := _saved_path(nf.path)):
+                return RedirectResponse(url, status_code=302)
+            return FileResponse(local, media_type=mimetypes.guess_type(nf.filename)[0], filename=nf.filename,
+                                content_disposition_type="attachment" if download else "inline")
         path = (media_root / stored).resolve()
         if media_root.resolve() not in path.parents or not path.exists():
             raise HTTPException(404, "File không còn trên máy chủ")
         return FileResponse(path, media_type=mime or mimetypes.guess_type(name)[0],
                             filename=name, content_disposition_type="attachment" if download else "inline")
+
+    def _saved_path(rel: str) -> Path | None:
+        root = settings.path(settings.data_dir).resolve() / "files"
+        path = (settings.path(settings.data_dir) / rel).resolve()
+        return path if root in path.parents and path.exists() else None
+
+    @app.get("/nf/{nfid}")
+    def saved_file(request: Request, nfid: int, download: int = 0, txt: int = 0):
+        """File đính kèm đã tải về từ nguồn và lưu trên máy chủ (txt=1: chữ đọc được từ file)."""
+        with repo.session() as s:
+            current_user(request, s)
+            nf = s.get(NoticeFile, nfid)
+            if not nf or not nf.path:
+                raise HTTPException(404)
+            rel, name = nf.path + (".txt" if txt else ""), nf.filename + (".txt" if txt else "")
+        if not (path := _saved_path(rel)):
+            raise HTTPException(404, "File không còn trên máy chủ")
+        mime = "text/plain; charset=utf-8" if txt else mimetypes.guess_type(name)[0]
+        return FileResponse(path, media_type=mime, filename=name,
+                            content_disposition_type="attachment" if download else "inline")
 
     @app.post("/files/{fid}/delete")
     def delete_file(request: Request, fid: int, csrf: str = Form("")):

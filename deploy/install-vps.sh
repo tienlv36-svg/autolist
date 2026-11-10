@@ -52,7 +52,12 @@ if [ "$SRC" != "$APP" ]; then
   KEEP=(); [ -f "$APP/config/settings.yaml" ] && KEEP=(--exclude=./config/settings.yaml)   # giữ cấu hình đã chỉnh
   tar -C "$SRC" --exclude=./data --exclude=./.venv --exclude=./backups "${KEEP[@]}" -cf - . | tar -C "$APP" -xf -
 fi
-mkdir -p "$APP/data" "$APP/backups"
+mkdir -p "$APP/data" "$APP/backups" "$APP/data/files"
+# Đợt 2: lịch cũ 1 lần/ngày lúc 2:00 -> 2 lượt/ngày 0:00 và 12:00 (chỉ đổi khi còn đúng giá trị mặc định cũ)
+if grep -q '^  cron: "0 2 \* \* \*"' "$APP/config/settings.yaml" 2>/dev/null; then
+  sed -i 's|^  cron: "0 2 \* \* \*".*|  cron: "0 0,12 * * *"           # 2 lượt/ngày: 0:00 và 12:00; mỗi lượt xong tự sao lưu|' "$APP/config/settings.yaml"
+  echo "  Lịch thu thập: 0:00 và 12:00 mỗi ngày"
+fi
 chown -R "$APP_USER:$APP_USER" "$APP"
 git config --system --add safe.directory "$APP" 2>/dev/null || true
 
@@ -80,9 +85,11 @@ if [ "$HAS_SYSTEMD" = 1 ]; then
 else
   echo "  (!) Máy không dùng systemd – bỏ qua tạo dịch vụ"
 fi
-CRON="15 4 * * * $APP/deploy/backup.sh >> $APP/backups/backup.log 2>&1"
-( crontab -u "$APP_USER" -l 2>/dev/null | grep -v 'deploy/backup.sh' ; echo "$CRON" ) | crontab -u "$APP_USER" - 2>/dev/null \
-  && echo "  Sao lưu tự động 4:15 mỗi sáng vào $APP/backups" || echo "  (!) Chưa đặt được lịch sao lưu (thiếu cron)"
+# sao lưu: chạy tự động sau MỖI lượt thu thập (auction-scheduler gọi deploy/backup.sh) -> bỏ lịch cron 4:15 cũ
+if crontab -u "$APP_USER" -l 2>/dev/null | grep -q 'deploy/backup.sh'; then
+  crontab -u "$APP_USER" -l 2>/dev/null | grep -v 'deploy/backup.sh' | crontab -u "$APP_USER" - 2>/dev/null || true
+fi
+echo "  Sao lưu tự động sau mỗi lượt thu thập (0:00 và 12:00) vào $APP/backups"
 
 resolves_here() {   # tên miền đã trỏ (bản ghi A) về đúng IP của VPS chưa?
   getent ahostsv4 "$1" 2>/dev/null | awk '{print $1}' | sort -u | grep -qx "$PUBLIC_IP"

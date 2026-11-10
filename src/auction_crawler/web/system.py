@@ -11,7 +11,10 @@ from typing import Any
 from apscheduler.triggers.cron import CronTrigger
 from sqlalchemy import func, select
 
+from ..attachments import NoticeFile
+from ..config import DEFAULT_CRON
 from ..notify import is_configured
+from ..realestate.db import PropertyNotice
 from ..realestate.db import LoginAttempt, Property
 from ..storage import CrawlRun, NoticeRow
 
@@ -53,12 +56,27 @@ def system_status(s, settings, media_root: Path) -> dict[str, Any]:
     except OSError:
         st["disk"] = None
     st["media_size"] = _dir_size(media_root) if media_root.exists() else 0
+    now = datetime.now()
+    linked = select(PropertyNotice.notice_id)
+    open_linked = (select(PropertyNotice.notice_id).join(Property, Property.id == PropertyNotice.property_id)
+                   .where(Property.registration_end >= now))
+    st["docs"] = {
+        "files": s.scalar(select(func.count(NoticeFile.id)).where(NoticeFile.path.is_not(None))) or 0,
+        "size": s.scalar(select(func.sum(NoticeFile.size))) or 0,
+        "ocr": s.scalar(select(func.count(NoticeFile.id)).where(NoticeFile.method == "ocr")) or 0,
+        "done": s.scalar(select(func.count(NoticeRow.id)).where(NoticeRow.docs_at.is_not(None))) or 0,
+        "todo": s.scalar(select(func.count(NoticeRow.id)).where(NoticeRow.docs_at.is_(None), NoticeRow.id.in_(linked))) or 0,
+        "todo_open": s.scalar(select(func.count(NoticeRow.id)).where(NoticeRow.docs_at.is_(None),
+                                                                     NoticeRow.id.in_(open_linked))) or 0,
+        "props_doc": s.scalar(select(func.count(Property.id)).where(
+            func.length(Property.field_sources) > 4)) or 0,
+    }
     bdir = settings.path("backups")
     backups = sorted(bdir.glob("autolist_*.tar.gz"), key=lambda p: p.stat().st_mtime, reverse=True) if bdir.exists() else []
     st["backups"] = [{"name": b.name, "size": b.stat().st_size, "at": datetime.fromtimestamp(b.stat().st_mtime)}
                      for b in backups[:5]]
     st["backup_count"] = len(backups)
-    cron = settings.schedule.get("cron", "0 2 * * *")
+    cron = settings.schedule.get("cron", DEFAULT_CRON)
     try:
         trig = CronTrigger.from_crontab(cron, timezone="Asia/Ho_Chi_Minh")
         st["next_run"] = trig.get_next_fire_time(None, datetime.now(trig.timezone))

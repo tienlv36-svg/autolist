@@ -51,6 +51,8 @@ class NoticeRow(Base):
     detail_fetched: Mapped[bool] = mapped_column(Boolean, default=False)
     dup_group: Mapped[int | None] = mapped_column(Integer, index=True)   # tin trùng giữa các nguồn
     raw: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    doc_info: Mapped[dict[str, Any] | None] = mapped_column(JSON)          # thông số trích từ file đính kèm
+    docs_at: Mapped[datetime | None] = mapped_column(DateTime, index=True)  # lúc đã tải + đọc file đính kèm
     content_hash: Mapped[str | None] = mapped_column(String(40))
     first_seen: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
     last_seen: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
@@ -99,6 +101,7 @@ class Repository:
         self.Session = sessionmaker(self.engine, expire_on_commit=False)
 
     def init_db(self) -> None:
+        from . import attachments as _att  # noqa: F401  (bảng file đính kèm)
         from .realestate import db as _re_db  # noqa: F401  (đăng ký bảng nghiệp vụ BĐS)
 
         Base.metadata.create_all(self.engine)
@@ -154,6 +157,7 @@ class Repository:
             if n.assets:
                 row.assets = [AssetRow(**a.model_dump()) for a in n.assets]
             row.content_hash = h
+            row.docs_at = None   # tin thay đổi -> kiểm tra lại file đính kèm (file đã lưu không tải lại)
             row.updated_count = (row.updated_count or 0) + 1
             return "updated"
 

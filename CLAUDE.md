@@ -12,25 +12,28 @@ không phải lập trình viên: giải thích ngắn gọn, dễ hiểu, nói 
 | Môi trường Python | `/opt/autolist/.venv` – lệnh CLI: `/opt/autolist/.venv/bin/auction` |
 | Cơ sở dữ liệu | `/opt/autolist/data/auction.db` (SQLite) |
 | File tải lên | `/opt/autolist/data/media/` |
+| File đính kèm thu thập (lưu vĩnh viễn) | `/opt/autolist/data/files/<nguồn>/<năm-tháng>/<mã tin>/` (+ `.txt` chữ đã đọc), bảng `notice_files` |
 | Cấu hình | `/opt/autolist/config/settings.yaml`, nguồn: `config/sources/*.yaml`, phân loại: `config/categories.yaml` |
 | Bí mật (KHÔNG in ra, KHÔNG gửi đi) | `data/secret.key`, `data/telegram.json`, `~auction/.config/rclone/rclone.conf` |
-| Bản sao lưu | `/opt/autolist/backups/` (4:15 mỗi sáng, giữ 14 bản; + Google Drive nếu cấu hình) |
+| Bản sao lưu | `/opt/autolist/backups/` (sau **mỗi** lượt thu thập 0:00 & 12:00, giữ 28 bản; + Google Drive nếu cấu hình). `data/files` không nằm trong bản nén (quá lớn); có file `data/.drive_files` thì đồng bộ dần lên Drive |
 | Mã nguồn git (để cập nhật) | `/root/autolist` (clone từ GitHub `tienlv36-svg/autolist`) |
-| Dịch vụ systemd | `auction-web` (web, 127.0.0.1:8000), `auction-scheduler` (lượt tự động 2:00 sáng), `caddy` (HTTPS hangdg.com), `fail2ban` |
+| Dịch vụ systemd | `auction-web` (web, 127.0.0.1:8000), `auction-scheduler` (lượt tự động 0:00 và 12:00), `caddy` (HTTPS hangdg.com), `fail2ban` |
 | Web | https://hangdg.com |
 
-Luồng dữ liệu mỗi lượt (2:00, `auction schedule` / `auction run-now`): thu thập tin mới 2 nguồn (dgts.moj.gov.vn
-qua API JSON, taisancong.vn qua HTML) → gắn loại tài sản chính thức → OCR (nếu bật) → đánh dấu tin trùng →
-gom phiên tài sản BĐS (`re-build`) → quét lịch sử giá cho tài sản còn hạn đăng ký → báo cáo Telegram.
+Luồng dữ liệu mỗi lượt (0:00 và 12:00, `auction schedule` / `auction run-now`): thu thập tin mới 2 nguồn
+(dgts.moj.gov.vn qua API JSON, taisancong.vn qua HTML) → gắn loại tài sản chính thức → OCR (nếu bật) → đánh dấu tin
+trùng → gom phiên tài sản BĐS (`re-build`) → quét lịch sử giá cho tài sản còn hạn đăng ký → tải + lưu + đọc file
+đính kèm (tối đa `docs_minutes` phút, còn hạn trước; số liệu tài liệu được ưu tiên) → gom phiên lại → sao lưu →
+báo cáo Telegram.
 
 ## Chạy lệnh đúng cách
 
 - Lệnh phần mềm chạy **dưới tài khoản `auction`**, trong thư mục `/opt/autolist`:
   `sudo -u auction /opt/autolist/.venv/bin/auction <lệnh>`
-- Lệnh chạy lâu (> vài phút: `crawl`, `enrich`, `history-scan`, `run-now`, `re-build` trên dữ liệu lớn) → chạy trong
+- Lệnh chạy lâu (> vài phút: `crawl`, `enrich`, `history-scan`, `docs-fetch`, `run-now`, `re-build` trên dữ liệu lớn) → chạy trong
   **tmux** (`tmux new -d -s <tên> '<lệnh>'`) và báo người dùng cách theo dõi, không chạy chặn phiên.
 - **Không chạy 2 tiến trình ghi CSDL cùng lúc.** Trước khi chạy lệnh ghi, kiểm tra `tmux ls` và
-  `pgrep -af "auction (crawl|enrich|re-build|history-scan|run-now|schedule)"` / `pgrep -af first-load`.
+  `pgrep -af "auction (crawl|enrich|re-build|history-scan|docs-fetch|docs-reparse|run-now|schedule)"` / `pgrep -af first-load`.
   Lượt tự động và `first-load.sh` dùng chung khoá `data/.run.lock`.
 - Đọc CSDL: `sqlite3 -readonly /opt/autolist/data/auction.db "<SELECT ...>"`. **Không** UPDATE/DELETE trực tiếp
   trừ khi người dùng yêu cầu rõ và đã sao lưu.
@@ -39,11 +42,13 @@ Các lệnh CLI hay dùng (`auction --help` để xem đủ):
 
 | Lệnh | Việc |
 |---|---|
-| `run-now` | Chạy ngay 1 lượt như lịch 2:00 (kèm báo cáo Telegram) |
+| `run-now` | Chạy ngay 1 lượt như lịch tự động (kèm sao lưu + báo cáo Telegram) |
 | `crawl [-s dgts\|taisancong] [--since YYYY-MM-DD] [--no-detail] [-p N]` | Thu thập |
 | `enrich -s dgts --realestate -n N` | Lấy giá/tiền đặt trước/nơi có TS cho tin BĐS chưa có chi tiết |
 | `re-build` | Lọc BĐS, trích thông số, gom phiên, tính giá phiên 1 / hiện tại / % giảm |
 | `history-scan -n N` | Quét lịch sử giá (phiên cũ) cho tài sản còn hạn đăng ký |
+| `docs-fetch -m PHÚT [-n N]` | Tải, lưu, đọc file đính kèm (còn hạn trước) rồi gom phiên lại |
+| `docs-reparse` | Trích lại số liệu từ chữ đã lưu (không tải lại) rồi gom phiên lại |
 | `dedupe`, `tag-types` | Tin trùng giữa 2 nguồn; loại tài sản chính thức (dgts) |
 | `stats`, `export -f xlsx` | Thống kê nhanh; xuất Excel ra `data/exports/` |
 | `user-add <tên> --name "<Họ tên>" [--admin]` | Tạo tài khoản web |
@@ -80,6 +85,8 @@ tự sửa trong `/root/autolist` (token GitHub trên VPS chỉ có quyền đ�
   trống kèm lý do (`properties.auto_notes`). Giá trị nhập tay (`*_manual`) luôn ưu tiên và không bị ghi đè.
 - Quy ước phiên, giá phiên 1, giá hiện tại, % giảm, quét lịch sử: `docs/QUY_UOC_GIA_PHIEN.md`.
 - Giá taisancong (OCR từ PDF) chỉ là tham khảo, không phải giá chính thức.
+- Số liệu tài sản (diện tích, tờ/thửa, kích thước) ưu tiên lấy từ file đính kèm; OCR khác tin đăng → để trống
+  (`properties.field_sources` ghi trường nào lấy từ tài liệu). **Không xoá** `data/files/`.
 
 ## An toàn – PHẢI hỏi người dùng trước khi
 
@@ -97,5 +104,6 @@ tải cho cổng thông tin nhà nước).
 ## Tài liệu trong repo
 
 `docs/CAI_DAT_HANGDG.md` (cài đặt VPS này), `docs/CAP_NHAT_DOT_1.md` (Telegram, Google Drive, khoá SSH),
+`docs/CAP_NHAT_DOT_2.md` (file đính kèm, lịch 0:00 & 12:00, sao lưu sau mỗi lượt),
 `docs/QUY_UOC_GIA_PHIEN.md` (giá & phiên), `docs/HUONG_DAN.md` (vận hành chung, hướng dẫn sử dụng),
 `docs/CLAUDE_TREN_VPS.md` (cách người dùng chạy phiên Claude này).

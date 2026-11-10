@@ -17,7 +17,10 @@ crawl:
   stop_when_page_all_seen: true  # chạy tăng dần: dừng khi cả trang đã có trong DB
 
 schedule:                        # dùng với lệnh `auction schedule`
-  cron: "0 2 * * *"              # mỗi ngày 1 lần lúc 2:00 sáng (giờ Việt Nam)
+  cron: "0 0,12 * * *"           # 2 lượt/ngày: 0:00 và 12:00 (giờ Việt Nam); mỗi lượt xong tự sao lưu
   history_limit: 500             # mỗi lượt quét lịch sử giá tối đa N tài sản còn hạn đăng ký (0 = tắt)
   run_on_start: false            # true: chạy ngay 1 lượt mỗi khi dịch vụ khởi động
   ocr_limit: 0                   # >0: mỗi lượt OCR giá từ PDF cho N tin taisancong (cần tesseract)
+  docs_minutes: 300              # mỗi lượt tải + đọc file đính kèm tối đa N phút (0 = tắt); còn lại đọc tiếp lượt sau
+  docs_max_disk_pct: 85          # ổ cứng đã dùng >= N% -> dừng tải file đính kèm, báo Telegram
+  ocr_max_pages: 30              # OCR tối đa N trang mỗi file scan

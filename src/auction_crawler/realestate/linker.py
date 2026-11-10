@@ -91,6 +91,7 @@ class Item:
     category: str
     info: RealEstateInfo
     property_count: int | None = None
+    doc: dict | None = None          # thông số trích từ file đính kèm (attachments.merge_file_infos)
 
 
 class DSU:
@@ -125,7 +126,8 @@ def load_items(repo: Repository) -> list[Item]:
             NoticeRow.id, NoticeRow.source, NoticeRow.title, NoticeRow.asset_name, NoticeRow.address,
             NoticeRow.asset_owner, NoticeRow.origin, NoticeRow.province, NoticeRow.asset_type, NoticeRow.official_type,
             NoticeRow.starting_price, NoticeRow.deposit, NoticeRow.auction_date, NoticeRow.registration_end,
-            NoticeRow.publish_date, NoticeRow.dup_group, NoticeRow.owner_address, NoticeRow.property_count)).all()
+            NoticeRow.publish_date, NoticeRow.dup_group, NoticeRow.owner_address, NoticeRow.property_count,
+            NoticeRow.doc_info)).all()
         assets: dict[int, list[str]] = defaultdict(list)
         for nid, name, place in s.execute(select(AssetRow.notice_id, AssetRow.name, AssetRow.place)):
             assets[nid].extend(x for x in (name, place) if x)
@@ -142,7 +144,7 @@ def load_items(repo: Repository) -> list[Item]:
                         r.starting_price if single else None, r.deposit if single else None,
                         plausible_dt(r.auction_date), plausible_dt(r.registration_end), plausible_dt(r.publish_date),
                         r.dup_group, cat, info,
-                        r.property_count))
+                        r.property_count, r.doc_info if (r.property_count or 1) == 1 else None))
     return out
 
 
@@ -260,6 +262,42 @@ def rebuild(repo: Repository) -> dict[str, int]:
     return stats
 
 
+DOC_LABELS = {"land_area": "tổng diện tích", "residential_area": "diện tích đất ở",
+              "other_land_area": "diện tích đất khác", "floor_area": "diện tích sàn",
+              "width": "chiều ngang", "length": "chiều dài", "map_sheet": "số tờ", "parcel_no": "số thửa"}
+
+
+def _same(a, b) -> bool:
+    if isinstance(a, str) or isinstance(b, str):
+        return str(a).lstrip("0") == str(b).lstrip("0")
+    return abs(float(a) - float(b)) <= 0.05
+
+
+def _doc_value(members: list[Item], f: str, label: str, portal, notes: list[str]):
+    """Giá trị 1 trường, ƯU TIÊN file đính kèm (xem docs/QUY_UOC_GIA_PHIEN.md mục 5):
+    - tài liệu các phiên ghi khác nhau -> để trống;
+    - tài liệu đọc từ lớp chữ (PDF chữ/.docx) -> dùng, kể cả khi khác tin đăng (ghi chú chênh lệch);
+    - tài liệu đọc bằng OCR mà khác tin đăng -> để trống (OCR có thể đọc nhầm số), cần kiểm tra tay;
+    - không có tài liệu -> giá trị từ tin đăng.  Trả (giá trị, nguồn) với nguồn 'tài liệu' | 'tài liệu (OCR)' | None."""
+    if any(m.info.multi for m in members):
+        return portal, None                          # tin nhiều thửa/lô: không ghép số liệu tài liệu
+    docs = [(m.doc[f], (m.doc.get("methods") or {}).get(f, "ocr")) for m in members
+            if m.doc and m.doc.get(f) not in (None, "")]
+    if not docs:
+        return portal, None
+    v = docs[0][0]
+    if not all(_same(v, x) for x, _ in docs):
+        notes.append(f"Tài liệu các phiên ghi {label} khác nhau – để trống")
+        return None, None
+    method = "text" if any(mm == "text" for _, mm in docs) else "ocr"
+    if portal not in (None, "") and not _same(v, portal):
+        if method == "ocr":
+            notes.append(f"Tài liệu (OCR) và tin đăng ghi {label} khác nhau – để trống, kiểm tra tay")
+            return None, None
+        notes.append(f"Tin đăng ghi {label} {portal}, tài liệu ghi {v} – dùng số trong tài liệu")
+    return v, "tài liệu" if method == "text" else "tài liệu (OCR)"
+
+
 def _apply(s, prop: Property, members: list[Item], pn_all: dict, pn_by_prop: dict) -> None:
     sessions = _sessions(members)
     existing = dict(pn_by_prop.get(prop.id, {}))
@@ -304,12 +342,14 @@ def _apply(s, prop: Property, members: list[Item], pn_all: dict, pn_by_prop: dic
     prop.ward = agree(lambda m: m.info.ward, "xã/phường")
     prop.address = next((m.address for m in sorted(members, key=lambda x: x.auction_date or datetime.min,
                                                    reverse=True) if m.address), None)
-    for f, lbl in (("land_area", "tổng diện tích"), ("residential_area", "diện tích đất ở"),
-                   ("other_land_area", "diện tích đất khác"), ("floor_area", "diện tích sàn"),
-                   ("width", "chiều ngang"), ("length", "chiều dài")):
-        setattr(prop, f, agree(lambda m, f=f: getattr(m.info, f), lbl))
-    prop.map_sheet = agree(lambda m: m.info.map_sheet, "số tờ")
-    prop.parcel_no = agree(lambda m: m.info.parcel_no, "số thửa")
+    sources: dict[str, str] = {}
+    for f, lbl in DOC_LABELS.items():
+        portal = agree(lambda m, f=f: getattr(m.info, f), lbl)
+        val, src = _doc_value(members, f, lbl, portal, notes)
+        setattr(prop, f, val)
+        if src:
+            sources[f] = src
+    prop.field_sources = sources
     parcels = []
     for m in members:
         for p_ in m.info.parcels:
@@ -318,6 +358,7 @@ def _apply(s, prop: Property, members: list[Item], pn_all: dict, pn_by_prop: dic
     prop.parcels = parcels[:30]
     for m in members:
         notes += m.info.notes
+        notes += [f"Tài liệu: {x}" for x in (m.doc or {}).get("notes") or []]
     if any((m.property_count or 1) > 1 for m in members):
         notes.append("Thông báo gồm nhiều tài sản, mỗi tài sản một giá – giá để trống (xem bảng tài sản), nhập tay nếu cần")
     if not prop.province:
