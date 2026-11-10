@@ -4,7 +4,8 @@
   chữ đọc được. PDF có lớp chữ -> đọc thẳng; PDF scan / ảnh -> OCR Tesseract tiếng Việt; .docx -> đọc XML.
 - Từ chữ của tài liệu, trích thông số tài sản theo ĐÚNG quy tắc thận trọng của bộ trích xuất (chỉ nhận khi có
   nhãn rõ và một giá trị). Kết quả mỗi tin lưu ở notices.doc_info; bước gom phiên ưu tiên số liệu từ tài liệu.
-- Thứ tự: tin của tài sản CÒN HẠN đăng ký trước (ưu tiên cao, sắp hết hạn), sau đó tin cũ hơn (đọc dần).
+- CHỈ tài sản CÒN HẠN đăng ký (mọi phiên của tài sản đó, kể cả phiên cũ), ưu tiên cao / sắp hết hạn trước.
+  Tài sản đã hết hạn: không tải; khi có phiên mới (tài sản còn hạn trở lại) thì tải bổ sung ở lượt sau.
 - Mỗi lượt chạy có giới hạn thời gian; ổ cứng quá ngưỡng -> dừng tải, báo cáo.
 """
 from __future__ import annotations
@@ -23,7 +24,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import quote, unquote
 
-from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, case, select
+from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, select
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .config import Settings
@@ -208,9 +209,8 @@ def due_notices(s, limit: int) -> list[int]:
     q = (select(NoticeRow.id)
          .join(PropertyNotice, PropertyNotice.notice_id == NoticeRow.id)
          .join(Property, Property.id == PropertyNotice.property_id)
-         .where(NoticeRow.docs_at.is_(None))
-         .order_by(case((Property.registration_end >= now, 0), else_=1), Property.priority.desc(),
-                   Property.registration_end.asc(), NoticeRow.publish_date.desc())
+         .where(NoticeRow.docs_at.is_(None), Property.registration_end >= now)   # chỉ tài sản CÒN HẠN
+         .order_by(Property.priority.desc(), Property.registration_end.asc(), NoticeRow.publish_date.desc())
          .limit(limit))
     return list(s.scalars(q))
 
@@ -313,7 +313,7 @@ def fetch_docs(settings: Settings, repo: Repository, *, minutes: float = 300, li
         for f in fetchers.values():
             f.close()
     with repo.session() as s:
-        stats.details.append(f"còn {len(due_notices(s, 1_000_000)):,} tin chưa đọc file".replace(",", "."))
+        stats.details.append(f"còn {len(due_notices(s, 1_000_000)):,} tin (tài sản còn hạn) chưa đọc file".replace(",", "."))
     log.info("File đính kèm: %s tin, tải %s file (%.1f MB), OCR %s, có số liệu %s, lỗi %s%s",
              stats.notices, stats.files, stats.bytes / 1048576, stats.ocr_files, stats.with_info, stats.errors,
              f" ({stats.stopped})" if stats.stopped else "")

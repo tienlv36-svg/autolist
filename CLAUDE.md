@@ -12,7 +12,7 @@ không phải lập trình viên: giải thích ngắn gọn, dễ hiểu, nói 
 | Môi trường Python | `/opt/autolist/.venv` – lệnh CLI: `/opt/autolist/.venv/bin/auction` |
 | Cơ sở dữ liệu | `/opt/autolist/data/auction.db` (SQLite) |
 | File tải lên | `/opt/autolist/data/media/` |
-| File đính kèm thu thập (lưu vĩnh viễn) | `/opt/autolist/data/files/<nguồn>/<năm-tháng>/<mã tin>/` (+ `.txt` chữ đã đọc), bảng `notice_files` |
+| File đính kèm của tài sản còn hạn (lưu vĩnh viễn) | `/opt/autolist/data/files/<nguồn>/<năm-tháng>/<mã tin>/` (+ `.txt` chữ đã đọc), bảng `notice_files` |
 | Cấu hình | `/opt/autolist/config/settings.yaml`, nguồn: `config/sources/*.yaml`, phân loại: `config/categories.yaml` |
 | Bí mật (KHÔNG in ra, KHÔNG gửi đi) | `data/secret.key`, `data/telegram.json`, `~auction/.config/rclone/rclone.conf` |
 | Bản sao lưu | `/opt/autolist/backups/` (sau **mỗi** lượt thu thập 0:00 & 12:00, giữ 28 bản; + Google Drive nếu cấu hình). `data/files` không nằm trong bản nén (quá lớn); có file `data/.drive_files` thì đồng bộ dần lên Drive |
@@ -23,7 +23,7 @@ không phải lập trình viên: giải thích ngắn gọn, dễ hiểu, nói 
 Luồng dữ liệu mỗi lượt (0:00 và 12:00, `auction schedule` / `auction run-now`): thu thập tin mới 2 nguồn
 (dgts.moj.gov.vn qua API JSON, taisancong.vn qua HTML) → gắn loại tài sản chính thức → OCR (nếu bật) → đánh dấu tin
 trùng → gom phiên tài sản BĐS (`re-build`) → quét lịch sử giá cho tài sản còn hạn đăng ký → tải + lưu + đọc file
-đính kèm (tối đa `docs_minutes` phút, còn hạn trước; số liệu tài liệu được ưu tiên) → gom phiên lại → sao lưu →
+đính kèm của tài sản còn hạn đăng ký (tối đa `docs_minutes` phút; số liệu tài liệu được ưu tiên) → gom phiên lại → sao lưu →
 báo cáo Telegram.
 
 ## Chạy lệnh đúng cách
@@ -83,6 +83,8 @@ tự sửa trong `/root/autolist` (token GitHub trên VPS chỉ có quyền đ�
 
 - **Không suy luận.** Chỉ tự điền khi thông tin được ghi rõ, có nhãn và chỉ có một giá trị; chưa đủ căn cứ thì để
   trống kèm lý do (`properties.auto_notes`). Giá trị nhập tay (`*_manual`) luôn ưu tiên và không bị ghi đè.
+- **Giỏ hàng** (`cart_items`) là riêng tư theo tài khoản: thành viên chỉ thấy giỏ của mình, quản trị thấy tất cả.
+  Không tiết lộ giỏ của tài khoản này cho tài khoản khác khi trả lời.
 - Quy ước phiên, giá phiên 1, giá hiện tại, % giảm, quét lịch sử: `docs/QUY_UOC_GIA_PHIEN.md`.
 - Giá taisancong (OCR từ PDF) chỉ là tham khảo, không phải giá chính thức.
 - Số liệu tài sản (diện tích, tờ/thửa, kích thước) ưu tiên lấy từ file đính kèm; OCR khác tin đăng → để trống

@@ -81,11 +81,13 @@ trong báo cáo Telegram hằng ngày.
 ## 5. Số liệu lấy từ file đính kèm (thông báo, quy chế đấu giá)
 
 Mỗi lượt tự động (0:00 và 12:00), sau khi thu thập và quét lịch sử, phần mềm **tải về và lưu lại mọi file đính
-kèm** của tin BĐS (thư mục `data/files/<nguồn>/<năm-tháng>/<mã tin>/`, không xoá), rồi **đọc hết** chữ trong file:
-PDF có lớp chữ đọc thẳng; PDF scan / ảnh nhận dạng bằng OCR (tối đa 30 trang/file); `.docx` đọc trực tiếp; file
-khác (zip, rar, xls…) chỉ lưu. Thứ tự: tin của tài sản **còn hạn đăng ký** trước (ưu tiên cao, sắp hết hạn), sau đó
-tin cũ hơn. Mỗi lượt đọc tối đa 300 phút (`schedule.docs_minutes`), phần còn lại đọc ở lượt sau; ổ cứng dùng ≥ 85%
-thì dừng tải và báo Telegram.
+kèm** (thư mục `data/files/<nguồn>/<năm-tháng>/<mã tin>/`, không xoá) **của tài sản còn hạn đăng ký** – gồm file của
+mọi phiên của tài sản đó – rồi **đọc hết** chữ trong file: PDF có lớp chữ đọc thẳng; PDF scan / ảnh nhận dạng bằng
+OCR (tối đa 30 trang/file); `.docx` đọc trực tiếp; file khác (zip, rar, xls…) chỉ lưu.
+
+**Tài sản đã hết hạn đăng ký: không tải.** Khi tài sản đó **ra phiên mới** (còn hạn đăng ký trở lại), lượt kế tiếp
+tự tải bổ sung file của mọi phiên. Thứ tự: mức ưu tiên cao → sắp hết hạn đăng ký. Mỗi lượt đọc tối đa 300 phút
+(`schedule.docs_minutes`), phần còn lại đọc ở lượt sau; ổ cứng dùng ≥ 85% thì dừng tải và báo Telegram.
 
 **Trích thông số** (tổng DT đất, đất ở, đất khác, DT sàn, chiều ngang/dài, số tờ, số thửa) chỉ từ **đoạn mô tả tài
 sản** của file (“Tên tài sản…”, “Tài sản đấu giá…” đến trước “Giá khởi điểm”), theo đúng quy tắc thận trọng: có nhãn

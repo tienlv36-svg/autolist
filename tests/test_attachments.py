@@ -89,9 +89,9 @@ def test_fetch_docs_saves_files_and_prefers_document(env, monkeypatch):
     orig = pipeline.make_fetcher
     monkeypatch.setattr(pipeline, "make_fetcher", lambda st, src, transport=None: orig(st, src, mock(calls)))
     st = fetch_docs(s, repo, minutes=5)
-    assert st.notices == 2 and st.files == 4 and st.with_info >= 1
-    # còn hạn đăng ký được xử lý trước
-    assert "auctionInfoId=11" in calls[0]
+    assert st.notices == 1 and st.files == 2 and st.with_info == 1
+    # CHỈ tài sản còn hạn đăng ký; tài sản đã hết hạn (tin 12) không tải
+    assert not any("auctionInfoId=12" in c or "/12/" in c for c in calls)
     with repo.session() as ss:
         files = ss.query(NoticeFile).all()
         assert all((s.path(s.data_dir) / f.path).exists() for f in files)        # LƯU lại mọi file
@@ -106,7 +106,18 @@ def test_fetch_docs_saves_files_and_prefers_document(env, monkeypatch):
     # chạy lại: không tải lại file đã lưu
     n = len(calls)
     assert fetch_docs(s, repo, minutes=5).notices == 0 and len(calls) == n
-    assert reparse(repo, s) == 2
+    # tài sản hết hạn có PHIÊN MỚI -> còn hạn trở lại -> tải bổ sung mọi phiên của nó
+    fut = datetime.now() + timedelta(days=15)
+    repo.upsert(AuctionNotice(source="dgts", source_id="13", title=PORTAL.replace("156", "157") + " lô 12",
+                              asset_name=PORTAL.replace("156", "157"), asset_owner="Chi cục THADS TP.HCM",
+                              starting_price=13_000_000_000, auction_date=fut + timedelta(days=3),
+                              registration_end=fut, publish_date=datetime.now().date(),
+                              asset_type="quyen_su_dung_dat", origin="thi_hanh_an", property_count=1,
+                              detail_fetched=True))
+    rebuild(repo)
+    st = fetch_docs(s, repo, minutes=5)
+    assert st.notices == 2 and any("auctionInfoId=12" in c for c in calls)
+    assert reparse(repo, s) == 3
 
 
 def test_ocr_value_conflicting_with_portal_is_blanked(env):
@@ -138,5 +149,5 @@ def test_listing_error_retried_then_skipped(env, monkeypatch):
     monkeypatch.setattr(pipeline, "make_fetcher", lambda st, src, transport=None: orig(st, src, bad))
     for i in range(3):
         st = fetch_docs(s, repo, minutes=5)
-        assert st.errors == 2
+        assert st.errors == 1                               # chỉ tài sản còn hạn
     assert fetch_docs(s, repo, minutes=5).errors == 0      # đã tạm bỏ qua sau 3 lần lỗi

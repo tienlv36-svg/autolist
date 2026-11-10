@@ -6,7 +6,7 @@ from datetime import datetime
 
 from sqlalchemy import and_, case, func, or_, select
 
-from ..realestate.db import Property, Task
+from ..realestate.db import CartItem, Property, Task
 
 
 def eff(col: str):
@@ -50,6 +50,7 @@ class Filters:
     discounted: bool = False
     multi_session: bool = False
     mine: bool = False                  # được giao cho tôi
+    cart: bool = False                  # trong giỏ hàng CỦA TÔI
     sort: str = "han_dang_ky"
     page: int = 1
 
@@ -68,7 +69,7 @@ class Filters:
             price_min=num("price_min"), price_max=num("price_max"), area_min=num("area_min"), area_max=num("area_max"),
             priority_min=int(pm) if pm is not None else None, verified=qp.get("verified") or "",
             open_only=qp.get("open_only") == "1", discounted=qp.get("discounted") == "1",
-            multi_session=qp.get("multi_session") == "1", mine=qp.get("mine") == "1",
+            multi_session=qp.get("multi_session") == "1", mine=qp.get("mine") == "1", cart=qp.get("cart") == "1",
             sort=qp.get("sort") if qp.get("sort") in SORTS else "han_dang_ky",
             page=max(1, int(num("page") or 1)),
         )
@@ -115,6 +116,8 @@ def build_query(f: Filters, user_id: int):
     if f.mine:
         conds.append(Property.id.in_(select(Task.property_id).where(
             Task.assignee_id == user_id, Task.status.in_(["moi", "dang_lam"]))))
+    if f.cart:                          # luôn là giỏ của người đang xem (kể cả quản trị)
+        conds.append(Property.id.in_(select(CartItem.property_id).where(CartItem.user_id == user_id)))
     if conds:
         q = q.where(and_(*conds))
     return q.order_by(*SORTS[f.sort][1](), Property.id.desc())

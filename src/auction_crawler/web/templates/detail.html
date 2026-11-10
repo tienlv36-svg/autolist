@@ -200,6 +200,24 @@
 </div>
 
 <aside class="dside">
+  <section class="card" id="gio-hang">
+    <h2>🛒 Giỏ hàng của tôi</h2>
+    <form method="post" action="/p/{{ p.id }}/cart" class="cform">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      {% if my_cart %}
+      <p class="small">Đã thêm lúc {{ fmt.dt(my_cart.added_at) }} · chỉ bạn{% if user.role != 'admin' %} và quản trị{% endif %} xem được</p>
+      <textarea name="note" rows="2" placeholder="Ghi chú riêng (vd: đi xem ngày…, giá trần…)">{{ my_cart.note or '' }}</textarea>
+      <button name="action" value="note" class="btn small">Lưu ghi chú</button>
+      <button name="action" value="remove" class="btn small">Bỏ khỏi giỏ</button>
+      {% else %}
+      <textarea name="note" rows="2" placeholder="Ghi chú riêng (không bắt buộc)"></textarea>
+      <button name="action" value="add" class="btn primary small">＋ Thêm vào giỏ</button>
+      {% endif %}
+    </form>
+    {% if cart_others %}
+    <p class="small muted">Trong giỏ của: {% for c in cart_others %}<b>{{ c.user.full_name }}</b>{% if c.note %} <span title="{{ c.note }}">📝</span>{% endif %}{{ ', ' if not loop.last }}{% endfor %} <span class="tag auto">chỉ quản trị thấy</span></p>
+    {% endif %}
+  </section>
   <section class="card">
     <h2>Phân loại ưu tiên</h2>
     <form method="post" action="/p/{{ p.id }}/priority" class="prio">

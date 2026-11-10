@@ -19,7 +19,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from ..config import get_settings
 from ..attachments import NoticeFile
-from ..realestate.db import (CATEGORIES, EDITABLE, MONEY_FIELDS, OWNER_TYPES, PRIORITIES, SALE_FORMS, TASK_STATUS, Activity,
+from ..realestate.db import (CATEGORIES, CartItem, EDITABLE, MONEY_FIELDS, OWNER_TYPES, PRIORITIES, SALE_FORMS, TASK_STATUS, Activity,
                              Comment, FileView, Property, PropertyFile, PropertyNotice, Task, User)
 from ..storage import AssetRow, NoticeRow, Repository
 from ..normalize import PROVINCE_MERGE, parse_vnd
@@ -68,7 +68,13 @@ def create_app(repo: Repository | None = None, media_root: Path | None = None,
         return RedirectResponse(f"/login?next={request.url.path}", status_code=303)
 
     def render(request: Request, name: str, user: User | None, **ctx: Any) -> HTMLResponse:
+        if user is not None and "cart_count" not in ctx:
+            with repo.session() as s:
+                ctx["cart_count"] = s.scalar(select(func.count(CartItem.id)).where(CartItem.user_id == user.id)) or 0
         return tpl.TemplateResponse(request, name, {"user": user, "csrf": csrf_token(request), **ctx})
+
+    def my_cart_ids(s, user: User) -> set[int]:
+        return set(s.scalars(select(CartItem.property_id).where(CartItem.user_id == user.id)))
 
     def back(url: str) -> RedirectResponse:
         return RedirectResponse(url, status_code=303)
@@ -135,7 +141,7 @@ def create_app(repo: Repository | None = None, media_root: Path | None = None,
             base_qs = re.sub(r"(^|&)page=\d+", "", qs).lstrip("&")
             return render(request, "list.html", user, f=f, items=items, total=total, provinces=provinces,
                           wards=wards, page=f.page, pages=max(1, -(-total // PAGE_SIZE)), base_qs=base_qs,
-                          now=datetime.now())
+                          now=datetime.now(), in_cart=my_cart_ids(s, user))
 
     def _wards(s, province: str) -> list[tuple[str, int]]:
         w = func.coalesce(Property.ward_manual, Property.ward)
@@ -207,12 +213,17 @@ def create_app(repo: Repository | None = None, media_root: Path | None = None,
             acts = s.scalars(select(Activity).where(Activity.property_id == pid).order_by(Activity.at.desc()).limit(50)).all()
             ocr_refs = [(n, (n.raw or {}).get("ocr_prices")) for _, n in links if (n.raw or {}).get("ocr_prices")]
             sess_no = {n.id: pn.session_no for pn, n in links}
+            my_cart = s.scalar(select(CartItem).where(CartItem.user_id == user.id, CartItem.property_id == pid))
+            # giỏ của tài khoản khác: CHỈ quản trị được thấy
+            cart_others = s.scalars(select(CartItem).where(CartItem.property_id == pid, CartItem.user_id != user.id)
+                                    .order_by(CartItem.added_at)).all() if user.role == "admin" else []
             saved = sorted(s.scalars(select(NoticeFile).where(NoticeFile.notice_id.in_(list(sess_no)))).all(),
                            key=lambda f: (-sess_no.get(f.notice_id, 0), f.filename))
             return render(request, "detail.html", user, p=p, links=links, sessions=sessions, ocr_refs=ocr_refs, latest=latest, assets=assets,
                           folders=folders, users=users, views=views, comments=comments, tasks=tasks, acts=acts,
                           edit=edit, now=datetime.now(), today=date.today(), docs_pending=docs_pending,
-                          saved=saved, sess_no=sess_no, METHODS=DOC_METHODS)
+                          saved=saved, sess_no=sess_no, METHODS=DOC_METHODS,
+                          my_cart=my_cart, cart_others=cart_others)
 
     @app.post("/p/{pid}/fields")
     async def save_fields(request: Request, pid: int):
@@ -446,6 +457,58 @@ def create_app(repo: Repository | None = None, media_root: Path | None = None,
                 q = q.where(Task.status == status)
             tasks = s.scalars(q.order_by(Task.due_date.is_(None), Task.due_date, Task.created_at.desc())).all()
             return render(request, "tasks.html", user, tasks=tasks, scope=scope, status=status, today=date.today())
+
+    # ------------------------------------------------------------------ giỏ hàng (riêng từng tài khoản)
+    @app.post("/p/{pid}/cart")
+    def cart_toggle(request: Request, pid: int, csrf: str = Form(""), action: str = Form("add"), note: str = Form("")):
+        check_csrf(request, csrf)
+        with repo.Session.begin() as s:
+            user = current_user(request, s)
+            _get_prop(s, pid)
+            it = s.scalar(select(CartItem).where(CartItem.user_id == user.id, CartItem.property_id == pid))
+            if action == "remove":
+                if it:
+                    s.delete(it)
+            elif it is None:
+                s.add(CartItem(user_id=user.id, property_id=pid, note=note.strip()[:1000] or None))
+            elif action == "note":
+                it.note = note.strip()[:1000] or None
+        return back(request.headers.get("referer") or f"/p/{pid}")
+
+    @app.post("/cart/{cid}/remove")
+    def cart_remove(request: Request, cid: int, csrf: str = Form("")):
+        """Bỏ khỏi giỏ: chủ giỏ, hoặc quản trị."""
+        check_csrf(request, csrf)
+        with repo.Session.begin() as s:
+            user = current_user(request, s)
+            it = s.get(CartItem, cid)
+            if not it or (it.user_id != user.id and user.role != "admin"):
+                raise HTTPException(404)
+            s.delete(it)
+        return back(request.headers.get("referer") or "/cart")
+
+    @app.get("/cart", response_class=HTMLResponse)
+    def cart_page(request: Request, u: str = ""):
+        """Thành viên: chỉ giỏ của mình. Quản trị: giỏ của mình, của 1 tài khoản (u=<id>) hoặc tất cả (u=all)."""
+        with repo.session() as s:
+            user = current_user(request, s)
+            q = select(CartItem).join(Property, Property.id == CartItem.property_id)
+            owners: list[tuple[User, int]] = []
+            if user.role == "admin":
+                owners = s.execute(select(User, func.count(CartItem.id)).join(CartItem, CartItem.user_id == User.id)
+                                   .group_by(User.id).order_by(User.full_name)).all()
+                if u == "all":
+                    pass
+                elif u.isdigit():
+                    q = q.where(CartItem.user_id == int(u))
+                else:
+                    q = q.where(CartItem.user_id == user.id)
+            else:
+                u = ""
+                q = q.where(CartItem.user_id == user.id)
+            items = s.scalars(q.order_by(CartItem.user_id != user.id, CartItem.user_id,
+                                         Property.registration_end.is_(None), Property.registration_end)).all()
+            return render(request, "cart.html", user, items=items, owners=owners, u=u, now=datetime.now())
 
     # ------------------------------------------------------------------ gộp / tách phiên
     @app.post("/p/{pid}/detach/{nid}")

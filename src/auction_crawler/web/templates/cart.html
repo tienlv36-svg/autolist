@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% from "_macros.html" import priority_badge, verified_badge, deadline, parcel_or_address %}
+{% block title %}Giỏ hàng{% endblock %}
+{% block content %}
+<h1>Giỏ hàng</h1>
+{% if user.role == 'admin' %}
+<nav class="tabs">
+  <a href="/cart" class="{{ 'on' if not u }}">Của tôi</a>
+  <a href="/cart?u=all" class="{{ 'on' if u == 'all' }}">Tất cả tài khoản</a>
+  {% for o, n in owners if o.id != user.id %}<a href="/cart?u={{ o.id }}" class="{{ 'on' if u == o.id|string }}">{{ o.full_name }} ({{ n }})</a>{% endfor %}
+</nav>
+{% else %}
+<p class="small muted">Giỏ hàng là danh sách riêng của bạn: tài khoản khác không xem được (quản trị xem được).</p>
+{% endif %}
+<div class="card">
+  {% if not items %}<p class="muted">Giỏ trống. Thêm tài sản bằng nút <b>＋ Giỏ</b> trên danh sách hoặc trong trang chi tiết.</p>
+  {% else %}
+  <p class="small"><b>{{ items|length }}</b> tài sản{% if not u %} · <a class="link" href="/?cart=1&sort=han_dang_ky">Xem dạng danh sách / lọc</a> · <a class="link" href="/export.xlsx?cart=1">⬇ Xuất Excel</a>{% endif %}</p>
+  <div class="tblwrap"><table class="tbl resp">
+    <thead><tr>{% if u %}<th>Tài khoản</th>{% endif %}<th>Tài sản</th><th>Giá hiện tại</th><th>DT đất</th><th>Hạn ĐK</th><th>Ghi chú</th><th></th></tr></thead>
+    <tbody>
+    {% for c in items %}{% set p = c.property %}
+    <tr>
+      {% if u %}<td data-label="Tài khoản"><div><b>{{ c.user.full_name }}</b></div></td>{% endif %}
+      <td data-label="Tài sản"><div><a href="/p/{{ p.id }}">#{{ p.id }} {{ p.title[:90] }}</a>
+        <div class="small muted">{{ parcel_or_address(p) }}</div>{{ verified_badge(p) }}{{ priority_badge(p.priority) }}</div></td>
+      <td data-label="Giá hiện tại"><div>{{ fmt.money(p.eff('price_latest')) if p.eff('price_latest') else '—' }}
+        {% if p.discount_pct %}<div class="disc small">−{{ fmt.num(p.discount_pct) }}% so phiên 1</div>{% endif %}</div></td>
+      <td data-label="DT đất">{{ fmt.area(p.eff('land_area')) }}</td>
+      <td data-label="Hạn ĐK"><div>{{ fmt.dt(p.registration_end, False) }} {{ deadline(p.registration_end) }}</div></td>
+      <td data-label="Ghi chú" class="small"><div>{{ c.note or '' }}<div class="muted">thêm {{ fmt.dt(c.added_at) }}</div></div></td>
+      <td class="act"><form method="post" action="/cart/{{ c.id }}/remove" onsubmit="return confirm('Bỏ khỏi giỏ?')"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="link danger">Bỏ</button></form></td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% endif %}
+</div>
+{% endblock %}

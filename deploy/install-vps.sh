@@ -53,11 +53,13 @@ if [ "$SRC" != "$APP" ]; then
   tar -C "$SRC" --exclude=./data --exclude=./.venv --exclude=./backups "${KEEP[@]}" -cf - . | tar -C "$APP" -xf -
 fi
 mkdir -p "$APP/data" "$APP/backups" "$APP/data/files"
-# Đợt 2: lịch cũ 1 lần/ngày lúc 2:00 -> 2 lượt/ngày 0:00 và 12:00 (chỉ đổi khi còn đúng giá trị mặc định cũ)
-if grep -q '^  cron: "0 2 \* \* \*"' "$APP/config/settings.yaml" 2>/dev/null; then
-  sed -i 's|^  cron: "0 2 \* \* \*".*|  cron: "0 0,12 * * *"           # 2 lượt/ngày: 0:00 và 12:00; mỗi lượt xong tự sao lưu|' "$APP/config/settings.yaml"
-  echo "  Lịch thu thập: 0:00 và 12:00 mỗi ngày"
+# Đợt 2: lịch cũ (2:00 hoặc 6 giờ/lần) -> 2 lượt/ngày 0:00 và 12:00 (chỉ đổi khi còn đúng giá trị mặc định cũ)
+if grep -Eq '^  cron: "(0 2|17 \*/6) \* \* \*"' "$APP/config/settings.yaml" 2>/dev/null; then
+  sed -i -E 's|^  cron: "(0 2\|17 \*/6) \* \* \*".*|  cron: "0 0,12 * * *"           # 2 lượt/ngày: 0:00 và 12:00; mỗi lượt xong tự sao lưu|' "$APP/config/settings.yaml"
 fi
+grep -q '^  cron: "0 0,12 \* \* \*"' "$APP/config/settings.yaml" 2>/dev/null \
+  && echo "  Lịch thu thập: 0:00 và 12:00 mỗi ngày" \
+  || echo "  (!) Lịch thu thập trong config/settings.yaml khác mặc định: $(grep -m1 '^  cron:' "$APP/config/settings.yaml" 2>/dev/null)"
 chown -R "$APP_USER:$APP_USER" "$APP"
 git config --system --add safe.directory "$APP" 2>/dev/null || true
 

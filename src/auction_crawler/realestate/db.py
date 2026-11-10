@@ -194,6 +194,20 @@ class Task(Base):
     property: Mapped[Property | None] = relationship()
 
 
+class CartItem(Base):
+    """Giỏ hàng riêng của từng tài khoản: tài sản đang quan tâm. Thành viên chỉ thấy giỏ của mình;
+    quản trị xem được giỏ của mọi tài khoản."""
+    __tablename__ = "cart_items"
+    __table_args__ = (UniqueConstraint("user_id", "property_id", name="uq_cart_user_property"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    property_id: Mapped[int] = mapped_column(ForeignKey("properties.id", ondelete="CASCADE"), index=True)
+    note: Mapped[str | None] = mapped_column(Text)
+    added_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    user: Mapped[User] = relationship()
+    property: Mapped[Property] = relationship()
+
+
 class LoginAttempt(Base):
     """Lần thử đăng nhập - dùng để khoá tạm khi dò mật khẩu."""
     __tablename__ = "login_attempts"

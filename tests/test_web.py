@@ -257,3 +257,46 @@ def test_detail_shows_saved_attachments_and_doc_source(env):
     assert "File đính kèm đã lưu trên máy chủ" in r.text and "Thong bao.pdf" in r.text and "xem chữ" in r.text
     assert "từ tài liệu" in r.text and "95,5" in r.text
     assert c.get("/nf/999999").status_code == 404
+
+
+def test_cart_private_per_account_admin_sees_all(env):
+    repo, c = env
+    with repo.session() as s:
+        p1, p2 = [p.id for p in s.query(Property).order_by(Property.id).limit(2)]
+    # nv1 thêm p1 (có ghi chú)
+    login(c, "nv1")
+    tok = csrf(c, "/")
+    c.post(f"/p/{p1}/cart", data={"csrf": tok, "action": "add", "note": "đi xem thứ 7"})
+    page = c.get("/cart").text
+    assert f"#{p1}" in page and "đi xem thứ 7" in page and "Tất cả tài khoản" not in page
+    assert "🛒 Trong giỏ" in c.get("/").text and "Giỏ hàng <span class=\"cnt\">1</span>" in c.get("/").text
+    assert "1</strong> tài sản" in c.get("/?cart=1").text
+    c.post("/logout")
+    # admin thêm p2; thấy giỏ của mình, của nv1 và tất cả
+    login(c, "admin")
+    tok = csrf(c, "/")
+    c.post(f"/p/{p2}/cart", data={"csrf": tok, "action": "add"})
+    mine = c.get("/cart").text
+    assert f"#{p2}" in mine and f"#{p1}" not in mine
+    allp = c.get("/cart?u=all").text
+    assert f"#{p1}" in allp and f"#{p2}" in allp and "Nhân viên 1" in allp and "đi xem thứ 7" in allp
+    assert "Trong giỏ của: <b>Nhân viên 1</b>" in c.get(f"/p/{p1}").text
+    assert "1</strong> tài sản" in c.get("/?cart=1").text            # lọc "giỏ của tôi" = giỏ của admin
+    with repo.session() as s:
+        from auction_crawler.realestate.db import CartItem
+        nv_item = s.query(CartItem).filter(CartItem.property_id == p1).one().id
+        adm_item = s.query(CartItem).filter(CartItem.property_id == p2).one().id
+    c.post("/logout")
+    # nv1 KHÔNG xem được giỏ của admin, không xoá được món của người khác
+    login(c, "nv1")
+    tok = csrf(c, "/")
+    for url in ("/cart?u=all", f"/cart?u=1"):
+        page = c.get(url).text
+        assert f"#{p2}" not in page and f"#{p1}" in page
+    assert "Trong giỏ của" not in c.get(f"/p/{p2}").text
+    assert "1</strong> tài sản" in c.get("/?cart=1").text
+    assert c.post(f"/cart/{adm_item}/remove", data={"csrf": tok}).status_code == 404
+    c.post(f"/p/{p1}/cart", data={"csrf": tok, "action": "note", "note": "giá trần 1 tỷ"})
+    assert "giá trần 1 tỷ" in c.get("/cart").text
+    c.post(f"/cart/{nv_item}/remove", data={"csrf": tok})
+    assert "Giỏ trống" in c.get("/cart").text
