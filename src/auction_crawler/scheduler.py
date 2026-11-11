@@ -90,6 +90,7 @@ def _run_steps(settings: Settings, repo: Repository, report: dict[str, Any]) -> 
          if int(sch.get("ocr_limit", 0)) > 0 and "taisancong" in all_sources() else None),
         ("dedupe", lambda: find_duplicates(repo)),
         ("re-build", lambda: rebuild(repo)),          # tài sản BĐS: gom phiên, giá, % giảm
+        ("enrich-re", lambda: _enrich_re(settings, repo, int(sch.get("enrich_limit", 2000)))),  # tin BĐS cũ chưa có giá
         ("history", lambda: _history_then_rebuild(settings, repo, int(sch.get("history_limit", 500)))),
         ("docs", lambda: _docs_then_rebuild(settings, repo)),   # tải + đọc file đính kèm, ưu tiên số liệu tài liệu
         ("suggest", lambda: _suggest(repo)),                     # gợi ý gộp phiên (người dùng duyệt trên web)
@@ -128,6 +129,20 @@ def _docs_then_rebuild(settings: Settings, repo: Repository):
     if st.notices:
         rebuild(repo)
     return st
+
+
+def _enrich_re(settings: Settings, repo: Repository, limit: int) -> int:
+    """Lấy chi tiết (giá, tiền đặt trước…) cho tin BĐS cũ chưa có chi tiết, rồi gom phiên lại nếu có bổ sung."""
+    from .pipeline import enrich_missing
+    from .realestate.linker import rebuild
+    if limit <= 0:
+        return 0
+    n = 0
+    for name in all_sources():
+        n += enrich_missing(name, settings, repo, limit=limit, realestate=True).updated
+    if n:
+        rebuild(repo)
+    return n
 
 
 def _suggest(repo: Repository) -> int:

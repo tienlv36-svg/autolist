@@ -118,3 +118,23 @@ def test_label_not_matched_inside_longer_phrase():
     d = extract_by_labels(soup, {"auction_org": ["Tổ chức đấu giá"], "auction_date": ["Thời gian tổ chức"]})
     assert d["auction_org"] == "Công ty ĐGHD Sao Việt"
     assert d["auction_date"] == "09 giờ ngày 25/11/2026"
+
+
+def test_incremental_stops_on_known_page_even_without_detail(env, monkeypatch):
+    """Tin cũ chưa có chi tiết (lấy lần đầu bằng --no-detail, vd tin không phải BĐS) không làm lượt tăng dần
+    đọc tiếp tới giới hạn trang, và không bị tải chi tiết lại."""
+    _no_delay(monkeypatch)
+    s, repo = env
+    search = json.loads(read("dgts_search.json"))
+    calls = {"search": 0, "detail": 0}
+
+    def handler(req):
+        if req.url.path == "/portal/search/auction-notice":
+            calls["search"] += 1
+            return httpx.Response(200, json={**search, "pageCount": 50})     # nguồn còn nhiều trang
+        calls["detail"] += 1
+        return httpx.Response(200, json={"items": []})
+    crawl_source("dgts", s, repo, max_pages=1, fetch_detail=False, transport=httpx.MockTransport(handler))
+    calls.update(search=0, detail=0)
+    st = crawl_source("dgts", s, repo, max_pages=50, transport=httpx.MockTransport(handler))
+    assert calls["search"] == 1 and calls["detail"] == 0 and st.unchanged == 5

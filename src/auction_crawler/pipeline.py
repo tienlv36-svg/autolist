@@ -136,10 +136,13 @@ def crawl_source(name: str, settings: Settings, repo: Repository, *, max_pages: 
             known_detail = repo.existing_ids(name, ids, with_detail=True) if fetch_detail else known
             log.info("[%s] trang %s: %s tin (%s đã có)", name, page, len(items), len(known))
             todo_detail, plain = [], []
+            # chạy tăng dần (không --since): tin ĐÃ CÓ trong CSDL là tin cũ -> không tải chi tiết lại ở đây
+            # (tin cũ chưa có chi tiết do lấy lần đầu bằng --no-detail: bước enrich bổ sung cho tin BĐS)
+            skip = known if (not full and not since) else known_detail
             for it in items:
                 if since and it.get("_date") and it["_date"] < since:
                     continue
-                if not full and it["source_id"] in known_detail:
+                if not full and it["source_id"] in skip:
                     repo.touch(name, it["source_id"])
                     stats.unchanged += 1
                 elif fetch_detail and src.has_detail():
@@ -155,7 +158,7 @@ def crawl_source(name: str, settings: Settings, repo: Repository, *, max_pages: 
                 log.info("[%s] trang %s cũ hơn %s -> dừng", name, page, since)
                 break
             if (settings.crawl.stop_when_page_all_seen and not full and not since
-                    and known and len(known_detail) == len(items)):
+                    and known and len(known) == len(items)):
                 log.info("[%s] trang %s toàn tin đã có -> dừng (chạy tăng dần)", name, page)
                 break
     except Exception as e:  # noqa: BLE001
