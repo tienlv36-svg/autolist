@@ -111,6 +111,7 @@ tải cho cổng thông tin nhà nước).
 
 `docs/CAI_DAT_HANGDG.md` (cài đặt VPS này), `docs/CAP_NHAT_DOT_1.md` (Telegram, Google Drive, khoá SSH),
 `docs/CAP_NHAT_DOT_2.md` (file đính kèm, lịch 0:00 & 12:00, sao lưu sau mỗi lượt),
-`docs/CAP_NHAT_DOT_3.md` (bộ lọc đã lưu, nhắc hạn, gợi ý gộp, độ đầy đủ, PWA),
+`docs/CAP_NHAT_DOT_3.md` (bộ lọc đã lưu, nhắc hạn, gợi ý gộp, độ đầy đủ, thống kê, PWA),
+`docs/VIEC_CON_LAI.md` (danh sách việc cài đặt còn lại cho người dùng, theo thứ tự),
 `docs/QUY_UOC_GIA_PHIEN.md` (giá & phiên), `docs/HUONG_DAN.md` (vận hành chung, hướng dẫn sử dụng),
 `docs/CLAUDE_TREN_VPS.md` (cách người dùng chạy phiên Claude này).

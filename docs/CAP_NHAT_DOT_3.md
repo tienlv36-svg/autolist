@@ -10,6 +10,8 @@
 | **⏰ Nhắc hạn** (dải vàng đầu trang Tài sản) | Tài sản trong **giỏ** hết hạn đăng ký trong 3 ngày; **việc được giao** sắp/đã quá hạn; (quản trị) tài sản ưu tiên Cao/Rất cao sắp hết hạn. Mỗi ngày gửi Telegram cá nhân 1 lần |
 | **Gợi ý gộp** | Cặp tài sản nghi là cùng một BĐS đấu giá lại (cùng tờ/thửa, cùng số GCN, cùng diện tích + xã/chủ/mô tả…). Bấm **Đồng ý gộp** hoặc **Không phải** (không gợi ý lại) |
 | **Độ đầy đủ** | % tài sản còn hạn đã có giá, diện tích, tờ/thửa, xã/phường…; nút *Xem danh sách thiếu* để nhập tay bổ sung. Bộ lọc mới **“Còn thiếu dữ liệu”** ở trang Tài sản |
+| **Thống kê** | Tài sản mới theo tuần, theo tỉnh, theo loại chủ tài sản; mức giảm trung bình |
+| **Biểu đồ giá** (trang chi tiết) | Đường giá khởi điểm qua các phiên – rê chuột/chạm để xem giá từng phiên |
 | **Cài lên điện thoại** | Web mở như một ứng dụng (biểu tượng riêng, toàn màn hình) |
 | Menu trên điện thoại | Menu xuống dòng riêng, vuốt ngang để thấy đủ mục |
 | Gộp / tách phiên | Không còn phải chờ: phần mềm tính lại ở nền, tải lại trang sau ít phút |

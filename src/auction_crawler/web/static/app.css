@@ -135,3 +135,13 @@ tr.inactive td{opacity:.55}
 .merge .mside{border:1px solid var(--line);border-radius:8px;padding:10px}.merge .mreason{font-size:13px}
 .merge .mact{display:flex;gap:8px}
 @media (max-width:820px){.merge .mgrid{grid-template-columns:1fr}.savef{width:calc(100vw - 48px)}}
+/* biểu đồ giá qua các phiên */
+.chartbox{margin:8px 0 12px}.pchart{width:100%;max-width:680px;height:auto;display:block}
+.pchart .grid{stroke:#e9ecf0;stroke-width:1}.pchart .ax{fill:var(--muted);font-size:11px}
+.pchart .ln{fill:none;stroke:var(--brand);stroke-width:2;stroke-linejoin:round}
+.pchart .dot{fill:var(--brand);stroke:#fff;stroke-width:2}.pchart .hit{fill:transparent}
+.pchart .pt:hover .dot{r:6}.pchart .lbl{fill:var(--ink);font-size:12px;font-weight:600}
+.pchart .bar{fill:var(--brand)}.pchart .pt:hover .bar{fill:#0b4a3e}
+.kpis4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:12px}
+.kpis4 .card{margin:0}.kpis4 .v{font-size:22px;font-weight:700;display:block}
+@media (max-width:820px){.kpis4{grid-template-columns:repeat(2,1fr)}}

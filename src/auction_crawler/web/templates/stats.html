@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Thống kê{% endblock %}
+{% block content %}
+<h1>Thống kê</h1>
+<div class="kpis4">
+  <div class="card"><span class="small muted">Tài sản còn hạn đăng ký</span><span class="v">{{ fmt.num(kpi.open) }}</span></div>
+  <div class="card"><span class="small muted">Tài sản mới 7 ngày qua</span><span class="v">{{ fmt.num(kpi.new7) }}</span></div>
+  <div class="card"><span class="small muted">Giảm TB so phiên 1 (còn hạn, đã giảm)</span><span class="v">{{ (fmt.num(kpi.disc|round(1)) ~ '%') if kpi.disc else '—' }}</span></div>
+  <div class="card"><span class="small muted">Còn hạn, đấu giá nhiều phiên</span><span class="v">{{ fmt.num(kpi.multi) }}</span></div>
+</div>
+<section class="card"><h2>Tài sản mới theo tuần (12 tuần)</h2>
+  <div class="chartbox">{{ weekly|safe }}</div>
+  <p class="small muted">Tính theo ngày phần mềm ghi nhận tài sản. Tuần đầu có thể cao do đợt nạp dữ liệu lần đầu.</p></section>
+<section class="card"><h2>Theo tỉnh / thành phố (tài sản còn hạn)</h2>
+<div class="tblwrap"><table class="tbl resp">
+  <thead><tr><th>Tỉnh / TP</th><th>Số tài sản</th><th>Đã giảm giá</th><th>Giảm TB</th><th></th></tr></thead><tbody>
+  {% for name, n, d, nd in by_prov %}
+  <tr><td data-label="Tỉnh / TP"><b>{{ name }}</b></td>
+    <td data-label="Số tài sản"><div><div class="bar" title="{{ n }}"><span style="width:{{ (n / maxn * 100)|round(1) }}%"></span></div><span class="small">{{ fmt.num(n) }}</span></div></td>
+    <td data-label="Đã giảm giá">{{ fmt.num(nd) }}</td>
+    <td data-label="Giảm TB">{{ (fmt.num(d|round(1)) ~ '%') if d else '—' }}</td>
+    <td class="act"><a class="link" href="/?open_only=1&province={{ name|urlencode }}">Xem</a></td></tr>
+  {% endfor %}</tbody></table></div></section>
+<section class="card"><h2>Theo loại chủ tài sản (tài sản còn hạn)</h2>
+<div class="tblwrap"><table class="tbl resp">
+  <thead><tr><th>Chủ tài sản</th><th>Số tài sản</th><th>Đã giảm giá</th><th>Giảm TB</th></tr></thead><tbody>
+  {% for name, n, d, nd in by_owner %}
+  <tr><td data-label="Chủ tài sản"><b>{{ name }}</b></td><td data-label="Số tài sản">{{ fmt.num(n) }}</td>
+    <td data-label="Đã giảm giá">{{ fmt.num(nd) }}</td><td data-label="Giảm TB">{{ (fmt.num(d|round(1)) ~ '%') if d else '—' }}</td></tr>
+  {% endfor %}</tbody></table></div>
+<p class="small muted">“Giảm TB” = trung bình % giảm so phiên 1 của các tài sản đã giảm (theo quy ước giá phiên). Chỉ dùng giá chính thức hoặc giá nhập tay.</p></section>
+{% endblock %}

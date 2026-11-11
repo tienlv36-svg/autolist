@@ -160,6 +160,41 @@ def register(app, repo, settings, render, back, log_act) -> None:
             bg.add_task(rebuild_in_background, settings, repo)
         return back(request.headers.get("referer") or "/merges")
 
+    # ------------------------------------------------------------------ thống kê
+    @app.get("/stats", response_class=HTMLResponse)
+    def stats_page(request: Request):
+        from datetime import timedelta
+
+        from . import fmt
+        from ..realestate.db import OWNER_TYPES
+        now = datetime.now()
+        with repo.session() as s:
+            user = current_user(request, s)
+            open_q = Property.registration_end >= now
+            pv = func.coalesce(Property.province_manual, Property.province)
+            kpi = {
+                "open": s.scalar(select(func.count(Property.id)).where(open_q)) or 0,
+                "new7": s.scalar(select(func.count(Property.id)).where(Property.created_at >= now - timedelta(days=7))) or 0,
+                "disc": s.scalar(select(func.avg(Property.discount_pct)).where(open_q, Property.discount_pct > 0)),
+                "multi": s.scalar(select(func.count(Property.id)).where(open_q, Property.session_count > 1)) or 0,
+            }
+            # tài sản mới theo tuần (12 tuần, tính từ thứ Hai)
+            monday = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+            weeks = []
+            for i in range(11, -1, -1):
+                a = monday - timedelta(weeks=i)
+                n = s.scalar(select(func.count(Property.id)).where(Property.created_at >= a,
+                                                                   Property.created_at < a + timedelta(weeks=1))) or 0
+                weeks.append((f"{a:%d/%m}", n, f"Tuần {a:%d/%m}–{a + timedelta(days=6):%d/%m}: {n} tài sản mới"))
+            def group(col):
+                return s.execute(select(col, func.count(Property.id), func.avg(Property.discount_pct),
+                                        func.sum(case((Property.discount_pct > 0, 1), else_=0)))
+                                 .where(open_q).group_by(col).order_by(func.count(Property.id).desc())).all()
+            by_prov = [r for r in group(pv) if r[0]]
+            by_owner = [(OWNER_TYPES.get(k or "khac", k), n, d, nd) for k, n, d, nd in group(Property.owner_type)]
+            return render(request, "stats.html", user, kpi=kpi, weekly=fmt.bar_chart(weeks), by_prov=by_prov,
+                          by_owner=by_owner, maxn=max([n for _, n, *_ in by_prov] or [1]))
+
     # ------------------------------------------------------------------ độ đầy đủ dữ liệu
     @app.get("/quality", response_class=HTMLResponse)
     def quality(request: Request):

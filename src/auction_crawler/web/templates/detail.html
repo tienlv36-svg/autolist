@@ -99,6 +99,7 @@
     các phiên đầu nằm ngoài dữ liệu đã thu thập{% if p.history_note %} ({{ p.history_note }}){% endif %}. % giảm đang tính so với phiên sớm nhất có dữ liệu;
     tra cứu giá phiên đầu thật rồi nhập tay ô “Giá phiên 1” nếu cần.</div>
   {% elif p.history_note %}<p class="small muted">Quét lịch sử: {{ p.history_note }} ({{ fmt.dt(p.history_scanned_at) }})</p>{% endif %}
+  {% if chart %}<div class="chartbox"><div class="small muted">Giá khởi điểm qua các phiên (rê chuột / chạm vào điểm để xem giá)</div>{{ chart|safe }}</div>{% endif %}
   <div class="tblwrap"><table class="tbl">
     <tr><th>Phiên</th><th>Ngày đấu giá</th><th>Hạn đăng ký</th><th class="r">Giá khởi điểm</th><th class="r" title="So với phiên trước gần nhất có giá">So phiên trước*</th><th class="r" title="So với giá phiên 1 (hoặc phiên sớm nhất có dữ liệu)">So phiên 1</th><th>Nguồn</th><th></th></tr>
     {% set base = p.eff('price_first') %}{% set ns = namespace(prev=none) %}

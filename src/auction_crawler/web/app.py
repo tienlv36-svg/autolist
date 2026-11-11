@@ -205,6 +205,11 @@ def create_app(repo: Repository | None = None, media_root: Path | None = None,
                         sessions[-1]["n"] = n
                     continue
                 sessions.append({"no": pn.session_no, "pn": pn, "n": n, "dups": []})
+            chart = fmt.price_chart([
+                (f"P{se['no']}" + (f" {se['n'].auction_date:%m/%y}" if se['n'].auction_date else ""),
+                 se["n"].starting_price if (se["n"].property_count or 1) == 1 else None,
+                 f"Phiên {se['no']} – {fmt.dt(se['n'].auction_date, False)}: {fmt.money(se['n'].starting_price, False)}")
+                for se in sessions])
             latest = s.get(NoticeRow, p.latest_notice_id) if p.latest_notice_id else None
             assets = s.scalars(select(AssetRow).where(AssetRow.notice_id == p.latest_notice_id)).all() if latest else []
             files = s.scalars(select(PropertyFile).where(PropertyFile.property_id == pid)
@@ -230,7 +235,7 @@ def create_app(repo: Repository | None = None, media_root: Path | None = None,
             return render(request, "detail.html", user, p=p, links=links, sessions=sessions, ocr_refs=ocr_refs, latest=latest, assets=assets,
                           folders=folders, users=users, views=views, comments=comments, tasks=tasks, acts=acts,
                           edit=edit, now=datetime.now(), today=date.today(), docs_pending=docs_pending, msg=msg,
-                          saved=saved, sess_no=sess_no, METHODS=DOC_METHODS,
+                          saved=saved, sess_no=sess_no, METHODS=DOC_METHODS, chart=chart,
                           my_cart=my_cart, cart_others=cart_others)
 
     @app.post("/p/{pid}/fields")

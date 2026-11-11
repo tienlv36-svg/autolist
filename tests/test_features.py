@@ -192,3 +192,14 @@ def test_pwa_assets(env):  # noqa: F811
     assert c.get("/offline").status_code == 200 and c.get("/static/icon-512.png").status_code == 200
     page = c.get("/login").text
     assert 'rel="manifest"' in page and "serviceWorker.register" in page
+
+
+def test_price_chart_and_stats(env):  # noqa: F811
+    repo, c = env
+    login(c)
+    with repo.session() as s:
+        pid = s.query(Property).filter(Property.session_count == 2).one().id
+    page = c.get(f"/p/{pid}").text
+    assert 'class="pchart"' in page and "Phiên 1" in page and "800 triệu" in page
+    st = c.get("/stats").text
+    assert "Tài sản còn hạn đăng ký" in st and "Đồng Tháp" in st and "Ngân hàng / TCTD" in st and "Tuần" in st
