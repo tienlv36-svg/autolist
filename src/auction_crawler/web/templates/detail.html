@@ -147,11 +147,15 @@
   <h3 class="folder">🗄 File đính kèm đã lưu trên máy chủ <span class="muted small">({{ saved|length }})</span></h3>
   <table class="tbl small files">
   {% for f in saved %}
-    <tr><td><a href="/nf/{{ f.id }}" target="_blank">{{ f.filename }}</a>{% if f.error and not f.path %} <span class="tag warn" title="{{ f.error }}">lỗi tải</span>{% endif %}</td>
+    <tr><td>{% if f.path and not f.removed_at %}<a href="/nf/{{ f.id }}" target="_blank">{{ f.filename }}</a>
+      {% else %}<a href="{{ f.url }}" target="_blank" rel="noopener" title="Mở file trên website nguồn">{{ f.filename }} ↗</a>{% endif %}
+      {% if f.method == 'too_big' %} <span class="tag auto" title="{{ f.error }}">file lớn – mở ở nguồn</span>
+      {% elif f.removed_at %} <span class="tag auto" title="Tài sản đã hết hạn: chỉ lưu chữ đã đọc">chỉ lưu chữ</span>
+      {% elif f.error and not f.path %} <span class="tag warn" title="{{ f.error }}">lỗi tải</span>{% endif %}</td>
       <td>Phiên {{ sess_no.get(f.notice_id, '?') }}</td>
       <td>{{ fmt.size(f.size) }}</td>
       <td>{{ METHODS.get(f.method, '') }}{% if f.chars %} · <a class="link" href="/nf/{{ f.id }}?txt=1" target="_blank">xem chữ</a>{% endif %}</td>
-      <td>{% if f.path %}<a href="/nf/{{ f.id }}?download=1" class="link">Tải</a>{% endif %}</td></tr>
+      <td>{% if f.path and not f.removed_at %}<a href="/nf/{{ f.id }}?download=1" class="link">Tải</a>{% endif %}</td></tr>
   {% endfor %}
   </table>
   {% endif %}

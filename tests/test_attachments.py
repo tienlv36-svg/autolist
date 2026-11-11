@@ -94,7 +94,17 @@ def test_fetch_docs_saves_files_and_prefers_document(env, monkeypatch):
     assert calls[0].endswith("auctionInfoId=11") and any("auctionInfoId=12" in c for c in calls)
     with repo.session() as ss:
         files = ss.query(NoticeFile).all()
-        assert all((s.path(s.data_dir) / f.path).exists() for f in files)        # LƯU lại mọi file
+        exists = {f.notice_id: [] for f in files}
+        for f in files:
+            exists[f.notice_id].append((s.path(s.data_dir) / f.path).exists() or f.removed_at is not None)
+        assert all(all(v) for v in exists.values())
+        n11 = ss.query(NoticeRow).filter_by(source_id="11").one().id
+        n12 = ss.query(NoticeRow).filter_by(source_id="12").one().id
+        open_files = [f for f in files if f.notice_id == n11]
+        assert all((s.path(s.data_dir) / f.path).exists() for f in open_files)      # còn hạn: LƯU file gốc
+        old_doc = [f for f in files if f.notice_id == n12 and f.filename.endswith(".docx")][0]
+        assert old_doc.removed_at and not (s.path(s.data_dir) / old_doc.path).exists()   # hết hạn: chỉ giữ chữ
+        assert (s.path(s.data_dir) / (old_doc.path + ".txt")).exists()
         tb = [f for f in files if f.filename.endswith(".docx")][0]
         assert (s.path(s.data_dir) / (tb.path + ".txt")).exists() and tb.method == "docx"
         assert {f.method for f in files if f.filename == "anh.zip"} == {"unsupported"}
@@ -200,3 +210,41 @@ def test_ocr_stops_after_asset_section(monkeypatch, tmp_path):
     text = att._ocr_pdf(tmp_path / "x.pdf", 8, 5)
     assert calls == [1, 2, 3] and "Giá khởi điểm" in text and "trang 4" not in text
     assert att.section_complete(text) and not att.section_complete("1. Tên tài sản: thửa đất")
+
+
+@pytest.mark.skipif(not __import__("shutil").which("gs"), reason="cần ghostscript")
+def test_compress_scanned_pdf(tmp_path):
+    import random
+
+    from PIL import Image
+
+    from auction_crawler.attachments import compress_pdf
+    im = Image.new("L", (2480, 3508), 245)
+    px = im.load()
+    for _ in range(300000):
+        px[random.randrange(2480), random.randrange(3508)] = random.randint(0, 255)
+    f = tmp_path / "scan.pdf"
+    im.save(f, resolution=300, quality=95)
+    before = f.stat().st_size
+    assert before > 1_500_000
+    after = compress_pdf(f)
+    assert after and after < before * 0.8 and f.stat().st_size == after
+    small = tmp_path / "small.pdf"
+    small.write_bytes(b"%PDF-1.4 tiny")
+    assert compress_pdf(small) is None
+
+
+def test_too_big_file_keeps_link_only(env, monkeypatch):
+    s, repo = env
+    from auction_crawler import pipeline
+    orig = pipeline.make_fetcher
+
+    def handler(req):
+        if "viewDetailAuctionInfo" in req.url.path:
+            return httpx.Response(200, json={"listFile": [{"fileName": "to.pdf", "linkFile": "/u/to.pdf"}]})
+        return httpx.Response(200, content=b"%PDF" + b"0" * 3000)
+    monkeypatch.setattr(pipeline, "make_fetcher", lambda st, src, transport=None: orig(st, src, httpx.MockTransport(handler)))
+    fetch_docs(s, repo, minutes=5, max_file_mb=0.001)
+    with repo.session() as ss:
+        f = ss.query(NoticeFile).first()
+        assert f.path is None and f.method == "too_big" and "chỉ lưu đường link" in f.error

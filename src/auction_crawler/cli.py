@@ -340,6 +340,21 @@ def docs_fetch(minutes: float = typer.Option(300, "--minutes", "-m", help="Giớ
                   + (f"; {st.details[-1]}" if st.details else ""))
 
 
+@app.command("docs-compress")
+def docs_compress(minutes: float = typer.Option(120, "--minutes", "-m", help="Giới hạn thời gian (phút)")):
+    """Nén các bản scan PDF đã lưu (lớn trước) để giải phóng ổ cứng. Cần ghostscript (gs)."""
+    from .attachments import compress_existing, gs_available
+    from .scheduler import run_lock
+
+    s, repo = _setup()
+    if not gs_available():
+        console.print("Chưa cài ghostscript: sudo apt-get install -y ghostscript")
+        raise typer.Exit(1)
+    with run_lock(s):
+        n, saved = compress_existing(s, repo, minutes=minutes)
+    console.print(f"Đã nén {n} file, tiết kiệm {saved / 1e9:.1f} GB")
+
+
 @app.command("docs-reparse")
 def docs_reparse():
     """Trích lại thông số từ chữ đã lưu của file đính kèm (không tải lại), rồi gom phiên lại."""

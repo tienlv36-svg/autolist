@@ -33,7 +33,7 @@ from ..alerts import count_reminders
 
 log = logging.getLogger(__name__)
 DOC_METHODS = {"text": "đọc chữ", "docx": "đọc chữ", "ocr": "OCR", "none": "không đọc được",
-               "unsupported": "chỉ lưu"}
+               "unsupported": "chỉ lưu", "deferred": "chưa đọc (đã đủ số liệu)", "too_big": "quá lớn"}
 HERE = Path(__file__).parent
 PAGE_SIZE = 30
 EXPORT_MAX = 20000

@@ -62,7 +62,8 @@ def system_status(s, settings, media_root: Path) -> dict[str, Any]:
                    .where(Property.registration_end >= now))
     st["docs"] = {
         "files": s.scalar(select(func.count(NoticeFile.id)).where(NoticeFile.path.is_not(None))) or 0,
-        "size": s.scalar(select(func.sum(NoticeFile.size))) or 0,
+        "size": s.scalar(select(func.sum(NoticeFile.size)).where(NoticeFile.path.is_not(None),
+                                                                 NoticeFile.removed_at.is_(None))) or 0,
         "ocr": s.scalar(select(func.count(NoticeFile.id)).where(NoticeFile.method == "ocr")) or 0,
         "done": s.scalar(select(func.count(NoticeRow.id)).where(NoticeRow.docs_at.is_not(None))) or 0,
         "todo": s.scalar(select(func.count(NoticeRow.id)).where(NoticeRow.docs_at.is_(None), NoticeRow.id.in_(linked))) or 0,

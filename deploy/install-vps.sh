@@ -36,7 +36,7 @@ step "1/8 Cài gói hệ thống"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -q
 apt-get install -y -q git python3 python3-venv python3-pip tmux curl ufw \
-    tesseract-ocr tesseract-ocr-vie poppler-utils sqlite3 cron rclone fail2ban >/dev/null
+    tesseract-ocr tesseract-ocr-vie poppler-utils ghostscript sqlite3 cron rclone fail2ban >/dev/null
 # fail2ban: chặn IP dò mật khẩu SSH (cấu hình mặc định của Ubuntu đã bật bảo vệ sshd)
 systemctl enable --now fail2ban >/dev/null 2>&1 || true
 if ! command -v caddy >/dev/null; then

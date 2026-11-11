@@ -59,6 +59,8 @@ class NoticeFile(Base):
     error: Mapped[str | None] = mapped_column(Text)
     fetched_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
     info: Mapped[dict[str, Any] | None] = mapped_column(JSON)   # thông số trích từ file này
+    orig_size: Mapped[int | None] = mapped_column(Integer)      # dung lượng gốc trước khi nén (đã nén -> có giá trị)
+    removed_at: Mapped[datetime | None] = mapped_column(DateTime)   # chỉ giữ chữ (.txt), bỏ file gốc (tài sản đã hết hạn)
 
 
 @dataclass
@@ -69,8 +71,66 @@ class DocStats:
     ocr_files: int = 0
     with_info: int = 0
     errors: int = 0
+    saved: int = 0                 # byte tiết kiệm nhờ nén
     stopped: str | None = None
     details: list[str] = field(default_factory=list)
+
+
+# ------------------------------------------------------------------ nén bản scan
+COMPRESS_MIN = 1_500_000          # chỉ nén PDF > 1,5 MB
+
+
+def gs_available() -> bool:
+    return bool(shutil.which("gs"))
+
+
+def compress_pdf(path: Path) -> int | None:
+    """Nén PDF (chủ yếu bản scan) bằng Ghostscript, ảnh 150 dpi – vẫn đọc rõ. Thay file gốc khi nhỏ hơn ≥ 20%.
+    Trả dung lượng mới, hoặc None nếu không nén."""
+    if path.suffix.lower() != ".pdf" or not gs_available() or not path.exists() or path.stat().st_size < COMPRESS_MIN:
+        return None
+    tmp = path.with_name(path.name + ".gs.pdf")
+    try:
+        r = subprocess.run(["nice", "-n", "10", "gs", "-q", "-dNOPAUSE", "-dBATCH", "-dSAFER", "-sDEVICE=pdfwrite",
+                            "-dPDFSETTINGS=/ebook", "-dCompatibilityLevel=1.5", f"-sOutputFile={tmp}", str(path)],
+                           capture_output=True, timeout=600)
+        if r.returncode == 0 and tmp.exists() and 0 < tmp.stat().st_size < path.stat().st_size * 0.8:
+            tmp.replace(path)
+            return path.stat().st_size
+    except Exception as e:  # noqa: BLE001
+        log.debug("nén lỗi %s: %r", path, e)
+    finally:
+        tmp.unlink(missing_ok=True)
+    return None
+
+
+def compress_existing(settings: Settings, repo: Repository, minutes: float = 20) -> tuple[int, int]:
+    """Nén dần các PDF đã lưu mà chưa nén (lớn nhất trước). Trả (số file, số byte tiết kiệm)."""
+    if not gs_available() or minutes <= 0:
+        return 0, 0
+    base = settings.path(settings.data_dir)
+    deadline = time.monotonic() + minutes * 60
+    n = saved = 0
+    with repo.session() as s:
+        rows = s.execute(select(NoticeFile.id, NoticeFile.path, NoticeFile.size)
+                         .where(NoticeFile.path.is_not(None), NoticeFile.orig_size.is_(None),
+                                NoticeFile.removed_at.is_(None), NoticeFile.size >= COMPRESS_MIN)
+                         .order_by(NoticeFile.size.desc())).all()
+    for fid, rel, size in rows:
+        if time.monotonic() > deadline:
+            break
+        if not rel.lower().endswith(".pdf"):
+            continue
+        new = compress_pdf(base / rel)
+        with repo.Session.begin() as s:
+            nf = s.get(NoticeFile, fid)
+            nf.orig_size = size                       # đánh dấu đã thử nén (kể cả không nhỏ hơn)
+            if new:
+                nf.size = new
+                saved += size - new
+                n += 1
+    log.info("Nén file đính kèm: %s file, tiết kiệm %.1f GB", n, saved / 1e9)
+    return n, saved
 
 
 # ------------------------------------------------------------------ đọc chữ
@@ -302,13 +362,22 @@ def _fetcher(fetchers: dict, settings: Settings, name: str):
         return fetchers[name]
 
 
+class _Skip(Exception):
+    pass
+
+
 def process_notice(nid: int, repo: Repository, settings: Settings, fetchers: dict, stats: DocStats,
-                   ocr_max_pages: int = 8) -> dict[str, Any]:
+                   ocr_max_pages: int = 8, max_bytes: int = 25 * 1048576, text_only_expired: bool = True) -> dict[str, Any]:
     base = settings.path(settings.data_dir)
     with repo.session() as s:
         n = s.get(NoticeRow, nid)
         known = {f.url: f for f in s.scalars(select(NoticeFile).where(NoticeFile.notice_id == nid))}
         src_name, sid, pub = n.source, n.source_id, n.publish_date
+        from .realestate.db import Property, PropertyNotice
+        reg_end = s.scalar(select(Property.registration_end).join(PropertyNotice, PropertyNotice.property_id == Property.id)
+                           .where(PropertyNotice.notice_id == nid))
+        # tài sản đã hết hạn (đợt lấp dữ liệu năm 2026): chỉ giữ chữ đọc được, không giữ file gốc (tiết kiệm ổ cứng)
+        text_only = text_only_expired and not (reg_end and reg_end >= datetime.now())
         fetcher = _fetcher(fetchers, settings, src_name)
         files = sorted(list_files(n, fetcher), key=lambda f: _file_rank(f[0]))
     folder = Path("files") / src_name / (pub.strftime("%Y-%m") if pub else "khac") / _safe_name(sid)
@@ -323,8 +392,10 @@ def process_notice(nid: int, repo: Repository, settings: Settings, fetchers: dic
                 r = fetcher.request("GET", url)
                 r.raise_for_status()
                 body = r.content
-                if len(body) > MAX_BYTES:
-                    raise ValueError(f"file quá lớn ({len(body) // 1048576} MB)")
+                if len(body) > max_bytes:
+                    nf.error = f"file {len(body) // 1048576} MB, quá lớn – chỉ lưu đường link tới file gốc"
+                    nf.method = "too_big"
+                    raise _Skip()
                 fn = _safe_name(name)
                 if fn in seen_names:
                     fn = f"{len(seen_names)}_{fn}"
@@ -335,10 +406,12 @@ def process_notice(nid: int, repo: Repository, settings: Settings, fetchers: dic
                 nf.error = None
                 stats.files += 1
                 stats.bytes += len(body)
+            except _Skip:
+                pass
             except Exception as e:  # noqa: BLE001
                 nf.error = repr(e)[:300]
                 stats.errors += 1
-        if nf.path and nf.method in (None, "deferred"):
+        if nf.path and nf.method in (None, "deferred") and not nf.removed_at:
             p = base / nf.path
             try:
                 # đã đủ số liệu từ file trước -> file scan còn lại chỉ lưu, chưa OCR ('deferred', đọc khi cần)
@@ -348,6 +421,12 @@ def process_notice(nid: int, repo: Repository, settings: Settings, fetchers: dic
                     p.with_name(p.name + ".txt").write_text(text, encoding="utf-8")
                 nf.method, nf.chars = method, len(text)
                 nf.info = info_from_text(text) if text else {}
+                if not text_only and nf.orig_size is None and (new := compress_pdf(p)):
+                    nf.orig_size, nf.size = nf.size, new
+                    stats.saved += (nf.orig_size or 0) - new
+                if text_only and method not in ("deferred", "unsupported"):
+                    p.unlink(missing_ok=True)             # tài sản đã hết hạn: chỉ giữ chữ đã đọc
+                    nf.removed_at = datetime.now()
                 stats.ocr_files += method == "ocr"
             except Exception as e:  # noqa: BLE001
                 nf.method, nf.error = "none", repr(e)[:300]
@@ -379,7 +458,8 @@ def default_workers() -> int:
 
 
 def fetch_docs(settings: Settings, repo: Repository, *, minutes: float = 300, limit: int = 100_000,
-               max_disk_pct: float = 85, ocr_max_pages: int = 8, workers: int = 0, min_days: float = 2) -> DocStats:
+               max_disk_pct: float = 85, ocr_max_pages: int = 8, workers: int = 0, min_days: float = 2,
+               max_file_mb: float = 25, text_only_expired: bool = True) -> DocStats:
     """Tải + đọc file đính kèm cho các tin chưa xử lý, song song nhiều tin, trong giới hạn thời gian / ổ cứng."""
     stats = DocStats()
     deadline = time.monotonic() + minutes * 60
@@ -391,7 +471,8 @@ def fetch_docs(settings: Settings, repo: Repository, *, minutes: float = 300, li
     def one(nid: int) -> DocStats:
         st = DocStats()
         try:
-            process_notice(nid, repo, settings, fetchers, st, ocr_max_pages)
+            process_notice(nid, repo, settings, fetchers, st, ocr_max_pages, int(max_file_mb * 1048576),
+                           text_only_expired)
         except Exception as e:  # noqa: BLE001
             st.errors += 1
             log.warning("File đính kèm tin #%s lỗi: %r", nid, e)
@@ -404,7 +485,7 @@ def fetch_docs(settings: Settings, repo: Repository, *, minutes: float = 300, li
         return st
 
     def add(st: DocStats) -> None:
-        for k in ("notices", "files", "bytes", "ocr_files", "with_info", "errors"):
+        for k in ("notices", "files", "bytes", "ocr_files", "with_info", "errors", "saved"):
             setattr(stats, k, getattr(stats, k) + getattr(st, k))
 
     todo = list(ids)

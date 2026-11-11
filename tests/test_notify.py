@@ -132,6 +132,7 @@ def test_fill_runs_outside_main_and_reports_in_main(settings, monkeypatch):
     monkeypatch.setattr(scheduler, "_docs_then_rebuild", lambda s, r, m: calls.append(("docs", round(m))) or
                         SimpleNamespace(notices=12, with_info=5, ocr_files=9))
     monkeypatch.setattr(scheduler, "run_backup", lambda s: {"ok": True})
+    monkeypatch.setattr(scheduler, "_compress", lambda s, r: (0, 0))
     # 22:10: còn đủ thời gian trước 1:45 -> chạy tối đa fill_minutes (110)
     res = scheduler.run_fill(settings, repo, now=datetime(2026, 11, 12, 22, 10))
     assert res["enriched"] == 7 and res["docs_notices"] == 12 and calls[0] == "enrich" and calls[1][0] == "docs"

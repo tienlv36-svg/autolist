@@ -99,6 +99,7 @@ def _run_steps(settings: Settings, repo: Repository, report: dict[str, Any]) -> 
         ("re-build", lambda: rebuild(repo)),          # tài sản BĐS: gom phiên, giá, % giảm
         ("enrich-re", lambda: _enrich_re(settings, repo, int(sch.get("enrich_limit", 2000)))),  # tin BĐS cũ chưa có giá
         ("history", lambda: _history_then_rebuild(settings, repo, int(sch.get("history_limit", 500)))),
+        ("compress", lambda: _compress(settings, repo)),         # nén bản scan đã lưu (lớn trước) – giải phóng ổ cứng
         ("docs", lambda: _docs_then_rebuild(settings, repo, float(sch.get("docs_minutes", 180)))),  # file đính kèm
         ("alerts", lambda: _alerts(settings, repo)),             # bộ lọc đã lưu + nhắc hạn (Telegram cá nhân)
     ]
@@ -131,10 +132,16 @@ def _docs_then_rebuild(settings: Settings, repo: Repository, minutes: float):
         return None
     st = fetch_docs(settings, repo, minutes=minutes, max_disk_pct=float(sch.get("docs_max_disk_pct", 85)),
                     ocr_max_pages=int(sch.get("ocr_max_pages", 8)), workers=int(sch.get("docs_workers", 0)),
-                    min_days=float(sch.get("docs_min_days", 2)))
+                    min_days=float(sch.get("docs_min_days", 2)), max_file_mb=float(sch.get("docs_max_file_mb", 25)),
+                    text_only_expired=bool(sch.get("docs_text_only_expired", True)))
     if st.notices:
         rebuild(repo)
     return st
+
+
+def _compress(settings: Settings, repo: Repository) -> tuple[int, int]:
+    from .attachments import compress_existing
+    return compress_existing(settings, repo, minutes=float(settings.schedule.get("docs_compress_minutes", 30)))
 
 
 def _enrich_re(settings: Settings, repo: Repository, limit: int) -> int:
@@ -184,9 +191,10 @@ def run_fill(settings: Settings, repo: Repository, now: datetime | None = None) 
     if budget < 10:
         return None
     t0 = time.time()
-    res: dict[str, Any] = {"enriched": 0, "docs_notices": 0, "docs_with_info": 0, "ocr_files": 0}
+    res: dict[str, Any] = {"enriched": 0, "docs_notices": 0, "docs_with_info": 0, "ocr_files": 0, "compressed": 0}
     try:
         with run_lock(settings):
+            res["compressed"] = _compress(settings, repo)[1]
             res["enriched"] = _enrich_re(settings, repo, int(sch.get("enrich_limit", 2000)))
             left = budget - (time.time() - t0) / 60
             if left > 5:
@@ -209,8 +217,8 @@ def run_fill(settings: Settings, repo: Repository, now: datetime | None = None) 
         acc = json.loads(p.read_text()) if p.exists() else {}
     except (OSError, ValueError):
         acc = {}
-    for k in ("enriched", "docs_notices", "docs_with_info", "ocr_files"):
-        acc[k] = int(acc.get(k, 0)) + int(res[k] or 0)
+    for k in ("enriched", "docs_notices", "docs_with_info", "ocr_files", "compressed"):
+        acc[k] = int(acc.get(k, 0)) + int(res.get(k) or 0)
     acc["runs"] = int(acc.get("runs", 0)) + 1
     p.write_text(json.dumps(acc))
     log.info("Lấp dữ liệu xong (%.0f phút): %s", (time.time() - t0) / 60, res)
@@ -286,7 +294,11 @@ def format_report(settings: Settings, repo: Repository, report: dict[str, Any]) 
     if fl and fl.get("runs"):
         lines.append(f"• Lấp dữ liệu trong ngày ({num(fl['runs'])} lượt): bổ sung giá {num(fl.get('enriched'))} tin, "
                      f"đọc file {num(fl.get('docs_notices'))} tin (OCR {num(fl.get('ocr_files'))} file), "
-                     f"có số liệu {num(fl.get('docs_with_info'))} tin")
+                     f"có số liệu {num(fl.get('docs_with_info'))} tin"
+                     + (f", nén file tiết kiệm {fl['compressed'] / 1e9:.1f} GB" if fl.get("compressed") else ""))
+    cp = (steps.get("compress") or {}).get("result")
+    if cp and cp[1]:
+        lines.append(f"• Nén file đính kèm: {num(cp[0])} file, tiết kiệm {cp[1] / 1e9:.1f} GB")
     bkr = report.get("backup")
     if bkr is not None and not bkr.get("ok"):
         warns.append(f"Sao lưu sau lượt quét LỖI: {bkr.get('error')}")
