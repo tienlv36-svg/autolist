@@ -26,7 +26,7 @@ from sqlalchemy import select, update
 from ..normalize import plausible_dt, strip_accents
 from ..storage import AssetRow, NoticeRow, Repository
 from .db import Activity, Comment, FileView, Property, PropertyFile, PropertyNotice, Task
-from .extract import RealEstateInfo, extract
+from .extract import RealEstateInfo, extract, place_rejection
 
 log = logging.getLogger(__name__)
 
@@ -136,11 +136,15 @@ def load_items(repo: Repository) -> list[Item]:
         cat = is_real_estate(r.asset_type, f"{r.title} {r.asset_name or ''}", r.official_type)
         if not cat:
             continue
-        info = extract(r.title, r.asset_name, r.address, r.asset_type, assets.get(r.id))
+        bad_place = place_rejection(r.address, r.asset_owner, r.owner_address)
+        address = None if bad_place else r.address
+        info = extract(r.title, r.asset_name, address, r.asset_type, assets.get(r.id))
+        if bad_place:
+            info.notes.append(f"Địa chỉ tài sản để trống: {bad_place}")
         # giá: chỉ dùng giá chính thức khi nguồn đăng MỘT giá cho thông báo (kể cả gói "trọn gói" nhiều thửa
         # bán chung 1 giá). Thông báo có nhiều tài sản, mỗi tài sản một giá -> không cộng, để trống.
         single = (r.property_count or 1) == 1
-        out.append(Item(r.id, r.source, r.title, r.asset_owner, r.origin, info.province, r.address,
+        out.append(Item(r.id, r.source, r.title, r.asset_owner, r.origin, info.province, address,
                         r.starting_price if single else None, r.deposit if single else None,
                         plausible_dt(r.auction_date), plausible_dt(r.registration_end), plausible_dt(r.publish_date),
                         r.dup_group, cat, info,

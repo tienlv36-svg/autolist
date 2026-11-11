@@ -301,6 +301,30 @@ def detect_province_strict(*texts: str | None) -> tuple[str | None, str | None]:
     return None, None
 
 
+# ------------------------------------------------------------------ "nơi có tài sản" có thật là nơi có tài sản?
+OWNER_PLACE_RE = re.compile(r"^\W*(ngan hang|nh tmcp|chi nhanh ngan hang|(chi cuc|cuc|phong) thi hanh an|"
+                            r"thi hanh an dan su|to chuc tin dung)\b")
+
+
+def place_rejection(place: str | None, owner: str | None = None, owner_address: str | None = None) -> str | None:
+    """Lý do KHÔNG dùng ô 'nơi có tài sản' của nguồn làm địa chỉ tài sản (hoặc None nếu dùng được).
+    Một số đơn vị ghi địa chỉ trụ sở người có tài sản (ngân hàng, cơ quan thi hành án) vào ô này."""
+    if not place:
+        return None
+    n = re.sub(r"\s+", " ", strip_accents(place)).strip()
+    if OWNER_PLACE_RE.search(n):
+        return "ô 'nơi có tài sản' của nguồn ghi địa chỉ ngân hàng/cơ quan thi hành án"
+    on = re.sub(r"\s+", " ", strip_accents(owner or "")).strip()
+    if len(on) >= 10 and n.startswith(on[:25]):
+        return "ô 'nơi có tài sản' của nguồn ghi tên/địa chỉ người có tài sản"
+    oa = re.sub(r"\W+", "", strip_accents(owner_address or ""))
+    if len(oa) >= 15 and re.sub(r"\W+", "", n) == oa:
+        return "ô 'nơi có tài sản' trùng địa chỉ người có tài sản"
+    if not re.search(r"\(\s*nay la", n) and len({x for x, _ in _provinces_in(place)}) > 1:
+        return "ô 'nơi có tài sản' nhắc nhiều tỉnh/thành (thường là địa chỉ các chi nhánh)"
+    return None
+
+
 # ------------------------------------------------------------------ lần đấu giá
 SESSION_HINT_RE = re.compile(r"dau gia\s*(?:lai\s*)?(?:\(\s*)?lan\s*(?:thu\s*)?(\d{1,2})\b|\(\s*lan\s*(?:thu\s*)?(\d{1,2})\s*\)")
 

@@ -72,8 +72,9 @@ def build_notice(source: str, item: dict, classifier: RuleClassifier) -> Auction
         **{k: parse_datetime(item.get(k)) for k in DATETIMES},
     )
     # tỉnh nơi có TÀI SẢN: chỉ từ địa chỉ/mô tả tài sản (không đoán từ tên chủ tài sản hay nơi đấu giá)
-    from .realestate.extract import detect_province_strict
-    n.province, n.province_raw = detect_province_strict(n.address, n.asset_name, n.title)
+    from .realestate.extract import detect_province_strict, place_rejection
+    place = None if place_rejection(n.address, n.asset_owner, n.owner_address) else n.address
+    n.province, n.province_raw = detect_province_strict(place, n.asset_name, n.title)
     labels = classifier.classify(n.classify_fields())
     if "asset_type" in labels:
         n.asset_type, n.classify_score = labels["asset_type"].code, labels["asset_type"].score
@@ -245,8 +246,9 @@ def reclassify_all(repo: Repository) -> int:
             labels = clf.classify(row_fields(row))
             row.asset_type, row.classify_score = labels["asset_type"].code, labels["asset_type"].score
             row.origin = labels["origin"].code
-            from .realestate.extract import detect_province_strict
-            row.province, row.province_raw = detect_province_strict(row.address, row.asset_name, row.title)
+            from .realestate.extract import detect_province_strict, place_rejection
+            place = None if place_rejection(row.address, row.asset_owner, row.owner_address) else row.address
+            row.province, row.province_raw = detect_province_strict(place, row.asset_name, row.title)
             n += 1
     return n
 

@@ -140,3 +140,37 @@ def test_duplicate_asset_text_not_double_counted():
 def test_session_hint(text, n):
     from auction_crawler.realestate.extract import detect_session_hint
     assert detect_session_hint(text) == n
+
+
+def test_place_rejection_owner_address():
+    from auction_crawler.realestate.extract import place_rejection
+    msb = ("Ngân hàng TMCP Hàng Hải Việt Nam, địa chỉ: 54A Nguyễn Chí Thanh, Hà Nội; chi nhánh Đà Nẵng; "
+           "chi nhánh TP. Hồ Chí Minh")
+    assert place_rejection(msb, "Ngân hàng TMCP Hàng Hải Việt Nam") is not None
+    assert place_rejection("Chi cục Thi hành án dân sự huyện Thống Nhất, tỉnh Đồng Nai") is not None
+    assert place_rejection("Số 12 Lê Lợi, phường 1, TP.HCM; số 5 Trần Phú, Hà Nội") is not None   # nhiều tỉnh
+    assert place_rejection("Công ty TNHH ABC, KCN Tân Đông Hiệp, Bình Dương", "Công ty TNHH ABC") is not None
+    assert place_rejection("Số 9 Hai Bà Trưng, Hà Nội", "Bà Lê Thị B", "số 9 Hai Bà Trưng, Hà Nội") is not None
+    ok = "ấp 1, xã Mỹ Tân, thành phố Cao Lãnh, tỉnh Đồng Tháp (nay là phường Mỹ Ngãi, tỉnh Đồng Tháp)"
+    assert place_rejection(ok, "Ngân hàng Agribank") is None
+    assert place_rejection("xã Hưng Lộc, huyện Thống Nhất, tỉnh Đồng Nai", "Ngân hàng MSB") is None
+    assert place_rejection("xã Mỹ Yên, huyện Bến Lức, tỉnh Long An (nay là xã Mỹ Yên, tỉnh Tây Ninh)") is None
+
+
+def test_linker_ignores_bank_address_as_place(tmp_path):
+    from auction_crawler.models import AuctionNotice
+    from auction_crawler.realestate.db import Property
+    from auction_crawler.realestate.linker import rebuild
+    from auction_crawler.storage import Repository
+    repo = Repository(f"sqlite:///{tmp_path}/p.db")
+    repo.init_db()
+    t = ("Quyền sử dụng đất thửa đất số 88, tờ bản đồ số 4, diện tích 150m2 tại xã Hưng Lộc, huyện Thống Nhất, "
+         "tỉnh Đồng Nai")
+    repo.upsert(AuctionNotice(source="dgts", source_id="1", title=t, asset_name=t, asset_owner="Ngân hàng TMCP Hàng Hải",
+                              address="Ngân hàng TMCP Hàng Hải, 54A Nguyễn Chí Thanh, Hà Nội",
+                              asset_type="quyen_su_dung_dat", origin="ngan_hang_bao_dam", starting_price=1_000_000_000))
+    rebuild(repo)
+    with repo.session() as s:
+        p = s.query(Property).one()
+        assert p.address is None and p.province == "Đồng Nai"
+        assert any("ngân hàng" in n for n in p.auto_notes)
