@@ -1,5 +1,6 @@
 """Lấy danh sách tài liệu gốc (quy chế, thông báo PDF...) từ website nguồn vào thư mục tài sản.
-Chạy khi mở trang chi tiết lần đầu (mỗi thông báo 1 lần), file mở bằng link gốc - không tải về máy chủ."""
+Chỉ lấy của TIN GẦN NHẤT (phiên cũ đã có thì giữ, chưa có thì thôi). Chạy khi mở trang chi tiết lần đầu (mỗi
+thông báo 1 lần); file đã tải về máy chủ (notice_files) thì mở bản lưu, chưa có thì mở link gốc."""
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
@@ -8,7 +9,7 @@ from urllib.parse import quote
 import httpx
 from sqlalchemy import select
 
-from ..realestate.db import Property, PropertyFile, PropertyNotice
+from ..realestate.db import Property, PropertyFile
 from ..storage import NoticeRow
 
 
@@ -19,8 +20,9 @@ def needs_sync(s, prop: Property) -> bool:
 
 
 def _notices(s, prop: Property) -> list[NoticeRow]:
-    return s.scalars(select(NoticeRow).join(PropertyNotice, PropertyNotice.notice_id == NoticeRow.id)
-                     .where(PropertyNotice.property_id == prop.id)).all()
+    """Chỉ tin gần nhất của tài sản."""
+    n = s.get(NoticeRow, prop.latest_notice_id) if prop.latest_notice_id else None
+    return [n] if n else []
 
 
 def _dgts_files(source_id: str, ua: str) -> list[tuple[str, str]]:

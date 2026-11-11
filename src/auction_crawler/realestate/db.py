@@ -74,6 +74,7 @@ class Property(Base):
     price_latest_manual: Mapped[int | None] = mapped_column(BigInteger)
     auto_notes: Mapped[list[Any]] = mapped_column(JSON, default=list)   # lý do để trống (trích xuất thận trọng)
     field_sources: Mapped[dict[str, Any] | None] = mapped_column(JSON)  # trường lấy từ tài liệu: {tên: nguồn}
+    loc_candidates: Mapped[list[Any] | None] = mapped_column(JSON)      # vị trí ứng viên khi xã/tỉnh còn trống
     address_manual: Mapped[str | None] = mapped_column(Text)
     land_area_manual: Mapped[float | None] = mapped_column(Float)
     residential_area_manual: Mapped[float | None] = mapped_column(Float)
@@ -223,21 +224,6 @@ class SavedSearch(Base):
     checked_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)   # mốc "mới" cho lần báo sau
     last_new: Mapped[int] = mapped_column(Integer, default=0)                       # số tài sản mới lần báo gần nhất
     user: Mapped[User] = relationship()
-
-
-class MergeSuggestion(Base):
-    """Cặp tài sản nghi là cùng một BĐS (máy chỉ GỢI Ý; người dùng bấm Đồng ý mới gộp)."""
-    __tablename__ = "merge_suggestions"
-    __table_args__ = (UniqueConstraint("a_id", "b_id", name="uq_merge_pair"),)
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    a_id: Mapped[int] = mapped_column(Integer, index=True)       # tài sản còn hạn (giữ lại)
-    b_id: Mapped[int] = mapped_column(Integer, index=True)       # tài sản cũ nghi trùng
-    reason: Mapped[str] = mapped_column(Text)
-    score: Mapped[int] = mapped_column(Integer, default=0)
-    status: Mapped[str] = mapped_column(String(12), default="pending", index=True)   # pending|accepted|rejected
-    decided_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
-    decided_at: Mapped[datetime | None] = mapped_column(DateTime)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
 
 
 class LoginAttempt(Base):

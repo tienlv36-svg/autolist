@@ -8,7 +8,9 @@
 | **🔔 Bộ lọc** | Danh sách bộ lọc của bạn (riêng tư): số tài sản đang khớp, bật/tắt báo, xoá |
 | **Tài khoản → Telegram cá nhân** | Liên kết Telegram riêng: bấm *Liên kết Telegram* → gửi `/start <mã>` cho bot → *Kiểm tra* |
 | **⏰ Nhắc hạn** (dải vàng đầu trang Tài sản) | Tài sản trong **giỏ** hết hạn đăng ký trong 3 ngày; **việc được giao** sắp/đã quá hạn; (quản trị) tài sản ưu tiên Cao/Rất cao sắp hết hạn. Mỗi ngày gửi Telegram cá nhân 1 lần |
-| **Gợi ý gộp** | Cặp tài sản nghi là cùng một BĐS đấu giá lại (cùng tờ/thửa, cùng số GCN, cùng diện tích + xã/chủ/mô tả…). Bấm **Đồng ý gộp** hoặc **Không phải** (không gợi ý lại) |
+| **Tự động gộp phiên** | Tin cùng tờ/thửa + diện tích hoặc cùng số GCN được gộp tự động (kể cả tên xã cũ/mới). Trang Gợi ý gộp đã bỏ |
+| **Xác nhận vị trí** | Xã/phường, tỉnh đọc từ tin đăng + file đính kèm; nguồn mâu thuẫn → trang này, bấm vị trí gợi ý (1 chạm) |
+| **Lịch mới** | Quét tin mới **2:00** mỗi ngày; các giờ còn lại (0:10, 6:10–22:10 mỗi 2 giờ) **lấp dữ liệu còn thiếu**: giá, file đính kèm của tin gần nhất – còn hạn trước, rồi tài sản năm 2026 |
 | **Độ đầy đủ** | % tài sản còn hạn đã có giá, diện tích, tờ/thửa, xã/phường…; nút *Xem danh sách thiếu* để nhập tay bổ sung. Bộ lọc mới **“Còn thiếu dữ liệu”** ở trang Tài sản |
 | **Thống kê** | Tài sản mới theo tuần, theo tỉnh, theo loại chủ tài sản; mức giảm trung bình |
 | **Biểu đồ giá** (trang chi tiết) | Đường giá khởi điểm qua các phiên – rê chuột/chạm để xem giá từng phiên |
@@ -24,7 +26,7 @@ tính năng vẫn dùng trên web, chỉ chưa gửi Telegram.
 **Chỉ cập nhật khi `capnhat2` đã xong** (log có `=== XONG`). Cách dễ nhất: nhắn phiên **VPS hangdg**:
 
 > Kiểm tra capnhat2 đã xong chưa. Nếu xong và không có tiến trình ghi CSDL nào đang chạy thì sao lưu rồi cập nhật
-> phiên bản mới (git pull + install-vps.sh), sau đó chạy `merge-suggest` và báo kết quả.
+> phiên bản mới (git pull + install-vps.sh), rồi báo kết quả.
 
 Hoặc tự chạy qua SSH:
 
@@ -36,9 +38,6 @@ tail -n 2 /opt/autolist/data/capnhat2.log
 sudo -u auction /opt/autolist/deploy/backup.sh && cd /root/autolist && git pull && sudo bash deploy/install-vps.sh
 ```
 
-```bash
-sudo -u auction /opt/autolist/.venv/bin/auction merge-suggest
-```
 
 ## Cài web lên điện thoại
 

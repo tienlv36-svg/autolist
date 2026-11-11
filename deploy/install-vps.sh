@@ -53,12 +53,13 @@ if [ "$SRC" != "$APP" ]; then
   tar -C "$SRC" --exclude=./data --exclude=./.venv --exclude=./backups "${KEEP[@]}" -cf - . | tar -C "$APP" -xf -
 fi
 mkdir -p "$APP/data" "$APP/backups" "$APP/data/files"
-# Đợt 2: lịch cũ (2:00 hoặc 6 giờ/lần) -> 2 lượt/ngày 0:00 và 12:00 (chỉ đổi khi còn đúng giá trị mặc định cũ)
-if grep -Eq '^  cron: "(0 2|17 \*/6) \* \* \*"' "$APP/config/settings.yaml" 2>/dev/null; then
-  sed -i -E 's|^  cron: "(0 2\|17 \*/6) \* \* \*".*|  cron: "0 0,12 * * *"           # 2 lượt/ngày: 0:00 và 12:00; mỗi lượt xong tự sao lưu|' "$APP/config/settings.yaml"
+# Lịch: quét tin mới 1 lần/ngày lúc 2:00; các giờ còn lại tự lấp dữ liệu còn thiếu (fill_cron, mặc định trong code).
+# Chỉ đổi khi dòng cron còn đúng một giá trị mặc định cũ (6 giờ/lần, hoặc 0:00 và 12:00).
+if grep -Eq '^  cron: "(17 \*/6|0 0,12) \* \* \*"' "$APP/config/settings.yaml" 2>/dev/null; then
+  sed -i -E 's|^  cron: "(17 \*/6\|0 0,12) \* \* \*".*|  cron: "0 2 * * *"              # quét tin mới mỗi ngày 2:00; các giờ khác tự lấp dữ liệu thiếu|' "$APP/config/settings.yaml"
 fi
-grep -q '^  cron: "0 0,12 \* \* \*"' "$APP/config/settings.yaml" 2>/dev/null \
-  && echo "  Lịch thu thập: 0:00 và 12:00 mỗi ngày" \
+grep -q '^  cron: "0 2 \* \* \*"' "$APP/config/settings.yaml" 2>/dev/null \
+  && echo "  Lịch: quét tin mới 2:00 mỗi ngày; lấp dữ liệu còn thiếu 0:10 và mỗi 2 giờ từ 6:10 đến 22:10" \
   || echo "  (!) Lịch thu thập trong config/settings.yaml khác mặc định: $(grep -m1 '^  cron:' "$APP/config/settings.yaml" 2>/dev/null)"
 chown -R "$APP_USER:$APP_USER" "$APP"
 git config --system --add safe.directory "$APP" 2>/dev/null || true
@@ -91,7 +92,7 @@ fi
 if crontab -u "$APP_USER" -l 2>/dev/null | grep -q 'deploy/backup.sh'; then
   crontab -u "$APP_USER" -l 2>/dev/null | grep -v 'deploy/backup.sh' | crontab -u "$APP_USER" - 2>/dev/null || true
 fi
-echo "  Sao lưu tự động sau mỗi lượt thu thập (0:00 và 12:00) vào $APP/backups"
+echo "  Sao lưu tự động sau lượt quét 2:00 (và sau lượt lấp dữ liệu nếu đã quá 6 giờ) vào $APP/backups"
 
 resolves_here() {   # tên miền đã trỏ (bản ghi A) về đúng IP của VPS chưa?
   getent ahostsv4 "$1" 2>/dev/null | awk '{print $1}' | sort -u | grep -qx "$PUBLIC_IP"

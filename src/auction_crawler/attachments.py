@@ -32,7 +32,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from .config import Settings
 from .normalize import strip_accents
-from .realestate.extract import RealEstateInfo, _one, extract
+from .realestate.extract import RealEstateInfo, _one, asset_location, extract, ward_key
 from .storage import Base, NoticeRow, Repository
 
 log = logging.getLogger(__name__)
@@ -167,14 +167,21 @@ def asset_section(text: str) -> str:
 
 def info_from_text(text: str) -> dict[str, Any]:
     sec = asset_section(text)
-    if len(sec.strip()) < 30:
-        return {}
-    info: RealEstateInfo = extract("", sec)
-    out: dict[str, Any] = {f: getattr(info, f) for f in DOC_FIELDS if getattr(info, f) not in (None, "")}
-    if info.multi:
-        out = {"multi": True}
-    if info.notes:
-        out["notes"] = info.notes[:5]
+    out: dict[str, Any] = {}
+    if len(sec.strip()) >= 30:
+        info: RealEstateInfo = extract("", sec)
+        out = {f: getattr(info, f) for f in DOC_FIELDS if getattr(info, f) not in (None, "")}
+        if info.multi:
+            out = {"multi": True}
+        if info.notes:
+            out["notes"] = info.notes[:5]
+    if not out.get("multi"):
+        # vị trí: cụm "tọa lạc tại / địa chỉ thửa đất / nơi có tài sản …" trong TOÀN văn bản (giữ dấu tiếng Việt)
+        loc = asset_location(text)
+        if loc.ward:
+            out["ward"], out["ward_new"] = loc.ward, loc.ward_new
+        if loc.province:
+            out["province"] = loc.province
     return out
 
 
@@ -186,12 +193,16 @@ def merge_file_infos(infos: list[tuple[dict, str]]) -> dict[str, Any]:
         out["multi"] = True
         out["notes"].append("Tài liệu gồm nhiều thửa/lô – không lấy số liệu từ tài liệu")
         return out
-    for f in DOC_FIELDS:
+    for f in (*DOC_FIELDS, "ward", "province"):
         vals = [(i[f], m) for i, m in infos if i.get(f) not in (None, "")]
         if not vals:
             continue
+        if f == "ward":                           # tên mới "(nay là …)" thắng tên cũ
+            new = [(v, m) for (v, m), i in zip(vals, [i for i, _ in infos if i.get("ward")]) if i.get("ward_new")]
+            vals = new or vals
+            out["ward_new"] = bool(new)
         if isinstance(vals[0][0], str):
-            uniq = list(dict.fromkeys(str(v).lstrip("0") or "0" for v, _ in vals))
+            uniq = list(dict.fromkeys(ward_key(str(v)).lstrip("0") or "0" for v, _ in vals))
             v = vals[0][0] if len(uniq) == 1 else None
         else:
             v = _one([float(x) for x, _ in vals])
@@ -231,20 +242,36 @@ def _disk_pct(p: Path) -> float:
 
 
 # ------------------------------------------------------------------ chạy
-def due_notices(s, limit: int, min_days: float = 2) -> list[int]:
-    """Tin cần đọc file, thứ tự: tài sản còn hạn ≥ min_days ngày trước (kịp dùng số liệu) → đang THIẾU diện tích hoặc
-    tờ/thửa trước → ưu tiên cao → hạn đăng ký gần hơn. Tài sản còn hạn < min_days ngày: đọc sau cùng."""
+BACKFILL_SINCE = datetime(2026, 1, 1)
+
+
+def due_notices(s, limit: int, min_days: float = 2, backfill_since: datetime | None = BACKFILL_SINCE,
+                now: datetime | None = None) -> list[int]:
+    """Tin cần tải + đọc file. Chỉ TIN GẦN NHẤT của mỗi tài sản (phiên cũ đã có file thì thôi, chưa có thì bỏ qua).
+    Thứ tự:
+      1. tin MỚI (ghi nhận trong 36 giờ qua) của tài sản còn hạn – dữ liệu mới về lấp đầy ngay;
+      2. tài sản còn hạn ≥ min_days ngày; 3. còn hạn < min_days ngày;
+         (trong mỗi nhóm: đang THIẾU xã/phường, tỉnh, diện tích hoặc tờ/thửa trước → ưu tiên cao → hạn gần hơn)
+      4. sau cùng: tài sản đã hết hạn từ backfill_since (năm 2026) còn THIẾU thông tin, kết thúc gần đây trước."""
     from .realestate.db import Property, PropertyNotice
-    now = datetime.now()
+    now = now or datetime.now()
     eff = lambda c: func.coalesce(getattr(Property, f"{c}_manual"), getattr(Property, c))  # noqa: E731
-    has_all = and_(eff("land_area").is_not(None), eff("parcel_no").is_not(None))
+    has_all = and_(*(eff(c).is_not(None) for c in ("land_area", "parcel_no", "ward", "province")))
+    is_open = Property.registration_end >= now
+    scope = is_open
+    if backfill_since:
+        scope = scope | and_(Property.registration_end >= backfill_since, ~has_all)
     q = (select(NoticeRow.id)
          .join(PropertyNotice, PropertyNotice.notice_id == NoticeRow.id)
          .join(Property, Property.id == PropertyNotice.property_id)
-         .where(NoticeRow.docs_at.is_(None), Property.registration_end >= now)   # chỉ tài sản CÒN HẠN
-         .order_by(case((Property.registration_end >= now + timedelta(days=min_days), 0), else_=1),
+         .where(NoticeRow.docs_at.is_(None), NoticeRow.id == Property.latest_notice_id, scope)
+         .order_by(case((and_(is_open, NoticeRow.first_seen >= now - timedelta(hours=36)), 0),
+                        (Property.registration_end >= now + timedelta(days=min_days), 1),
+                        (is_open, 2), else_=3),
                    case((has_all, 1), else_=0),
-                   Property.priority.desc(), Property.registration_end.asc(), NoticeRow.publish_date.desc())
+                   Property.priority.desc(),
+                   case((is_open, Property.registration_end), else_=None).asc(),
+                   Property.registration_end.desc(), NoticeRow.publish_date.desc())
          .limit(limit))
     return list(s.scalars(q))
 
@@ -340,6 +367,11 @@ def process_notice(nid: int, repo: Repository, settings: Settings, fetchers: dic
     return doc
 
 
+def _open_latest():
+    from .realestate.db import Property
+    return select(Property.latest_notice_id).where(Property.registration_end >= datetime.now())
+
+
 def default_workers() -> int:
     """Số tin xử lý song song = số nhân CPU (tối thiểu 2: còn chờ mạng khi tải file). OCR chạy với độ ưu tiên thấp
     (nice), nên web vẫn được ưu tiên CPU."""
@@ -396,7 +428,12 @@ def fetch_docs(settings: Settings, repo: Repository, *, minutes: float = 300, li
         for f in fetchers.values():
             f.close()
     with repo.session() as s:
-        stats.details.append(f"còn {len(due_notices(s, 1_000_000)):,} tin (tài sản còn hạn) chưa đọc file".replace(",", "."))
+        rest = due_notices(s, 1_000_000)
+        n_open = s.scalar(select(func.count()).select_from(
+            select(NoticeRow.id).where(NoticeRow.id.in_(rest[:200_000]), NoticeRow.id.in_(_open_latest())).subquery())) or 0
+        dot = lambda x: f"{x:,}".replace(",", ".")  # noqa: E731
+        stats.details.append(f"còn {dot(n_open)} tin tài sản còn hạn và {dot(len(rest) - n_open)} tin năm 2026 "
+                             f"(đã hết hạn, còn thiếu thông tin) chưa đọc file")
     log.info("File đính kèm: %s tin, tải %s file (%.1f MB), OCR %s, có số liệu %s, lỗi %s, %s luồng%s",
              stats.notices, stats.files, stats.bytes / 1048576, stats.ocr_files, stats.with_info, stats.errors,
              workers, f" ({stats.stopped})" if stats.stopped else "")

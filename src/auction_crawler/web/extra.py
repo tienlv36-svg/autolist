@@ -12,7 +12,7 @@ from sqlalchemy import case, func, select
 
 from ..alerts import link_users, new_link_code, reminders, search_counts
 from ..notify import bot_username, is_configured
-from ..realestate.db import MergeSuggestion, Property, PropertyNotice, SavedSearch
+from ..realestate.db import Property, PropertyNotice, SavedSearch
 from .auth import check_csrf, current_user
 from .queries import MISSING
 
@@ -126,39 +126,40 @@ def register(app, repo, settings, render, back, log_act) -> None:
             user = current_user(request, s)
             return render(request, "reminders.html", user, r=reminders(s, user, datetime.now()), now=datetime.now())
 
-    # ------------------------------------------------------------------ gợi ý gộp phiên
-    @app.get("/merges", response_class=HTMLResponse)
-    def merges(request: Request, status: str = "pending"):
+    # ------------------------------------------------------------------ xác nhận vị trí (xã/phường, tỉnh)
+    def _loc_missing(now):
+        from .queries import eff
+        return [Property.registration_end >= now, (eff("ward").is_(None)) | (eff("province").is_(None))]
+
+    @app.get("/locations", response_class=HTMLResponse)
+    def locations(request: Request, page: int = 1):
+        now = datetime.now()
         with repo.session() as s:
             user = current_user(request, s)
-            st = status if status in ("pending", "accepted", "rejected") else "pending"
-            rows = s.scalars(select(MergeSuggestion).where(MergeSuggestion.status == st)
-                             .order_by(MergeSuggestion.score.desc(), MergeSuggestion.id).limit(200)).all()
-            ids = {m.a_id for m in rows} | {m.b_id for m in rows}
-            props = {p.id: p for p in s.scalars(select(Property).where(Property.id.in_(ids)))} if ids else {}
-            rows = [m for m in rows if st != "pending" or (m.a_id in props and m.b_id in props)]
-            return render(request, "merges.html", user, rows=rows, props=props, status=st, now=datetime.now())
+            cond = _loc_missing(now)
+            total = s.scalar(select(func.count(Property.id)).where(*cond)) or 0
+            items = s.scalars(select(Property).where(*cond).order_by(Property.registration_end)
+                              .offset((max(page, 1) - 1) * 50).limit(50)).all()
+            return render(request, "locations.html", user, items=items, total=total, page=max(page, 1),
+                          pages=max(1, -(-total // 50)), now=now)
 
-    @app.post("/merges/{mid}")
-    def merge_decide(request: Request, mid: int, bg: BackgroundTasks, csrf: str = Form(""), action: str = Form("")):
+    @app.post("/p/{pid}/location")
+    def set_location(request: Request, pid: int, csrf: str = Form(""), ward: str = Form(""), province: str = Form("")):
         check_csrf(request, csrf)
         with repo.Session.begin() as s:
             user = current_user(request, s)
-            m = s.get(MergeSuggestion, mid)
-            if not m or m.status != "pending":
+            p = s.get(Property, pid)
+            if not p:
                 raise HTTPException(404)
-            m.decided_by, m.decided_at = user.id, datetime.now()
-            if action == "accept":
-                if not (s.get(Property, m.a_id) and s.get(Property, m.b_id)):
-                    raise HTTPException(404)
-                m.status = "accepted"
-                merge_into(s, m.b_id, m.a_id)
-                log_act(s, m.a_id, user, "merge", f"Gộp tài sản #{m.b_id} vào #{m.a_id} (gợi ý: {m.reason})")
-            else:
-                m.status = "rejected"
-        if action == "accept":
-            bg.add_task(rebuild_in_background, settings, repo)
-        return back(request.headers.get("referer") or "/merges")
+            ward, province = ward.strip()[:128], province.strip()[:64]
+            if ward:
+                p.ward_manual = ward
+            if province:
+                p.province_manual = province
+            if ward or province:
+                log_act(s, pid, user, "location", f"Xác nhận vị trí: {ward or p.eff('ward') or '—'}, "
+                                                  f"{province or p.eff('province') or '—'}")
+        return back(request.headers.get("referer") or "/locations")
 
     # ------------------------------------------------------------------ thống kê
     @app.get("/stats", response_class=HTMLResponse)

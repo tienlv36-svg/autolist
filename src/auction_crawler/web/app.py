@@ -20,7 +20,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from ..config import get_settings
 from ..attachments import NoticeFile
 from ..realestate.db import (CATEGORIES, CartItem, EDITABLE, MONEY_FIELDS, OWNER_TYPES, PRIORITIES, SALE_FORMS, TASK_STATUS, Activity,
-                             Comment, FileView, MergeSuggestion, Property, PropertyFile, PropertyNotice, Task, User)
+                             Comment, FileView, Property, PropertyFile, PropertyNotice, Task, User)
 from ..storage import AssetRow, NoticeRow, Repository
 from ..normalize import PROVINCE_MERGE, parse_vnd
 from ..realestate.extract import parse_number
@@ -64,6 +64,7 @@ def create_app(repo: Repository | None = None, media_root: Path | None = None,
                            CATEGORIES=CATEGORIES, TASK_STATUS=TASK_STATUS, EDITABLE=EDITABLE, SORTS=SORTS,
                            FOLDERS=FOLDERS, MONEY_FIELDS=MONEY_FIELDS, PROVINCES=sorted(PROVINCE_MERGE))
     app.state.repo = repo
+    tpl.env.tests["loc_note"] = lambda n: bool(re.search(r"xác nhận|xã/phường|tỉnh", str(n)))
 
     @app.exception_handler(LoginRequired)
     async def _login_required(request: Request, exc: LoginRequired):
@@ -73,8 +74,10 @@ def create_app(repo: Repository | None = None, media_root: Path | None = None,
         if user is not None and "cart_count" not in ctx:
             with repo.session() as s:
                 ctx["cart_count"] = s.scalar(select(func.count(CartItem.id)).where(CartItem.user_id == user.id)) or 0
-                ctx["merge_count"] = s.scalar(select(func.count(MergeSuggestion.id))
-                                              .where(MergeSuggestion.status == "pending")) or 0
+                from .queries import eff as _eff
+                ctx["loc_count"] = s.scalar(select(func.count(Property.id)).where(
+                    Property.registration_end >= datetime.now(),
+                    _eff("ward").is_(None) | _eff("province").is_(None))) or 0
         return tpl.TemplateResponse(request, name, {"user": user, "csrf": csrf_token(request), **ctx})
 
     def my_cart_ids(s, user: User) -> set[int]:

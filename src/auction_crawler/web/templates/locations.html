@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% from "_macros.html" import deadline %}
+{% block title %}Xác nhận vị trí{% endblock %}
+{% block content %}
+<h1>Xác nhận vị trí</h1>
+<p class="small muted">Tài sản <b>còn hạn đăng ký</b> chưa xác định chắc chắn <b>xã/phường</b> hoặc <b>tỉnh/thành</b> (bộ lọc theo vị trí cần đúng).
+Phần mềm đã đọc tin đăng và file đính kèm; nguồn ghi khác nhau hoặc không ghi rõ thì đưa vào đây. Bấm một <b>vị trí gợi ý</b>
+để xác nhận, hoặc gõ tay. Còn <b>{{ fmt.num(total) }}</b> tài sản, hạn gần nhất trước.</p>
+{% if not items %}<div class="card"><p class="muted">Không còn tài sản nào cần xác nhận.</p></div>{% endif %}
+{% for p in items %}
+<div class="card locq">
+  <div class="lhead"><a href="/p/{{ p.id }}" target="_blank"><b>#{{ p.id }}</b> {{ p.title[:160] }}</a> {{ deadline(p.registration_end) }}</div>
+  <div class="small">Hiện có: xã/phường <b>{{ p.eff('ward') or '—' }}</b> · tỉnh <b>{{ p.eff('province') or '—' }}</b>
+    {% if p.address %} · <span class="muted">nơi có tài sản (nguồn): {{ p.address[:160] }}</span>{% endif %}</div>
+  {% set why = (p.auto_notes or [])|select('loc_note')|list %}
+  {% if why %}<div class="small muted">{{ why|join(' · ') }}</div>{% endif %}
+  <div class="cands">
+  {% for c in p.loc_candidates or [] %}
+    <form method="post" action="/p/{{ p.id }}/location"><input type="hidden" name="csrf" value="{{ csrf }}">
+      <input type="hidden" name="ward" value="{{ c.ward or '' }}"><input type="hidden" name="province" value="{{ c.province or '' }}">
+      <button class="btn small">✓ {{ c.ward or '(xã?)' }}, {{ c.province or '(tỉnh?)' }}<span class="muted"> · {{ c.source }}{% if c.new %}, tên mới{% endif %}</span></button></form>
+  {% endfor %}
+  </div>
+  <form method="post" action="/p/{{ p.id }}/location" class="inline small"><input type="hidden" name="csrf" value="{{ csrf }}">
+    <input name="ward" placeholder="Xã/phường, vd: Phường Mỹ Ngãi" value="{{ p.ward_manual or '' }}" class="w12">
+    <select name="province"><option value="">Tỉnh/TP…</option>{% for pv in PROVINCES %}<option {{ 'selected' if pv == p.eff('province') }}>{{ pv }}</option>{% endfor %}</select>
+    <button class="btn primary small">Lưu</button> <a class="link" href="/p/{{ p.id }}#tai-lieu" target="_blank">xem file đính kèm</a>
+  </form>
+</div>
+{% endfor %}
+{% if pages > 1 %}<nav class="pager">{% if page > 1 %}<a href="/locations?page={{ page - 1 }}">‹ Trước</a>{% endif %}<span>Trang {{ page }} / {{ pages }}</span>{% if page < pages %}<a href="/locations?page={{ page + 1 }}">Sau ›</a>{% endif %}</nav>{% endif %}
+{% endblock %}

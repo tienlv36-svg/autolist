@@ -11,7 +11,7 @@ from typing import Any, Iterator
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
 
-from .config import Settings
+from .config import DEFAULT_CRON, DEFAULT_FILL_CRON, Settings
 from .notify import disk_usage_pct, esc, send
 from .pipeline import crawl_source
 from .sources import all_sources
@@ -31,15 +31,21 @@ class AlreadyRunning(RuntimeError):
 
 
 @contextmanager
-def run_lock(settings: Settings) -> Iterator[None]:
-    """Khoá dùng chung với deploy/first-load.sh (data/.run.lock): không cho 2 lượt ghi CSDL cùng lúc."""
+def run_lock(settings: Settings, wait_seconds: float = 0) -> Iterator[None]:
+    """Khoá dùng chung với deploy/first-load.sh (data/.run.lock): không cho 2 lượt ghi CSDL cùng lúc.
+    wait_seconds > 0: chờ tối đa chừng đó giây nếu đang có lượt khác chạy."""
     p = settings.path("data/.run.lock")
     p.parent.mkdir(parents=True, exist_ok=True)
     with p.open("w") as f:
-        try:
-            fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError as e:
-            raise AlreadyRunning("Đang có tiến trình thu thập khác chạy (vd first-load.sh)") from e
+        deadline = time.monotonic() + wait_seconds
+        while True:
+            try:
+                fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError as e:
+                if time.monotonic() >= deadline:
+                    raise AlreadyRunning("Đang có tiến trình thu thập khác chạy (vd first-load.sh)") from e
+                time.sleep(15)
         try:
             yield
         finally:
@@ -47,20 +53,21 @@ def run_lock(settings: Settings) -> Iterator[None]:
 
 
 def run_once(settings: Settings, repo: Repository) -> dict[str, Any]:
-    """Một lượt đầy đủ: crawl tăng dần mọi nguồn -> gắn loại TS chính thức (dgts, 14 ngày gần nhất)
-    -> OCR giá (nếu bật) -> đánh dấu tin trùng giữa các nguồn -> dựng lại tài sản BĐS -> quét lịch sử giá
-    -> tải + đọc file đính kèm -> sao lưu -> báo Telegram."""
+    """Lượt chính (2:00): crawl tin mới mọi nguồn -> gắn loại TS chính thức -> OCR giá (nếu bật) -> tin trùng
+    -> gom phiên -> lấy giá tin BĐS còn thiếu -> quét lịch sử giá -> đọc file đính kèm (tin mới trước) -> bộ lọc
+    đã lưu + nhắc hạn -> sao lưu -> báo Telegram (kèm kết quả các lượt lấp dữ liệu trong ngày)."""
     t0 = time.time()
     started = datetime.now()
     report: dict[str, Any] = {"sources": {}, "steps": {}, "warnings": [], "started": started}
     try:
-        with run_lock(settings):
+        with run_lock(settings, wait_seconds=20 * 60):     # lượt lấp dữ liệu đang dở -> chờ nó dừng
             _run_steps(settings, repo, report)
             report["backup"] = run_backup(settings)      # sao lưu ngay sau mỗi lượt quét
     except AlreadyRunning as e:
         report["warnings"].append(str(e) + " – bỏ qua lượt này")
         log.warning("%s", e)
     report["minutes"] = round((time.time() - t0) / 60, 1)
+    report["fill"] = _pop_fill_stats(settings)
     report["text"] = format_report(settings, repo, report)
     send(settings, report["text"])
     return report
@@ -92,8 +99,7 @@ def _run_steps(settings: Settings, repo: Repository, report: dict[str, Any]) -> 
         ("re-build", lambda: rebuild(repo)),          # tài sản BĐS: gom phiên, giá, % giảm
         ("enrich-re", lambda: _enrich_re(settings, repo, int(sch.get("enrich_limit", 2000)))),  # tin BĐS cũ chưa có giá
         ("history", lambda: _history_then_rebuild(settings, repo, int(sch.get("history_limit", 500)))),
-        ("docs", lambda: _docs_then_rebuild(settings, repo)),   # tải + đọc file đính kèm, ưu tiên số liệu tài liệu
-        ("suggest", lambda: _suggest(repo)),                     # gợi ý gộp phiên (người dùng duyệt trên web)
+        ("docs", lambda: _docs_then_rebuild(settings, repo, float(sch.get("docs_minutes", 180)))),  # file đính kèm
         ("alerts", lambda: _alerts(settings, repo)),             # bộ lọc đã lưu + nhắc hạn (Telegram cá nhân)
     ]
     for label, fn in steps:
@@ -117,11 +123,10 @@ def _history_then_rebuild(settings: Settings, repo: Repository, limit: int):
     return st
 
 
-def _docs_then_rebuild(settings: Settings, repo: Repository):
+def _docs_then_rebuild(settings: Settings, repo: Repository, minutes: float):
     from .attachments import fetch_docs
     from .realestate.linker import rebuild
     sch = settings.schedule
-    minutes = float(sch.get("docs_minutes", 300))
     if minutes <= 0:
         return None
     st = fetch_docs(settings, repo, minutes=minutes, max_disk_pct=float(sch.get("docs_max_disk_pct", 85)),
@@ -146,14 +151,81 @@ def _enrich_re(settings: Settings, repo: Repository, limit: int) -> int:
     return n
 
 
-def _suggest(repo: Repository) -> int:
-    from .realestate.suggest import compute
-    return compute(repo)
-
-
 def _alerts(settings: Settings, repo: Repository):
     from .alerts import run_alerts
     return run_alerts(settings, repo)
+
+
+# ---------------------------------------------------------------- lấp dữ liệu còn thiếu (ngoài giờ quét chính)
+FILL_STATS = "data/.fill_stats.json"
+
+
+def _main_hour(settings: Settings) -> tuple[int, int]:
+    """Giờ:phút của lượt chính (từ cron dạng 'M H * * *'); mặc định 2:00."""
+    try:
+        m, h = settings.schedule.get("cron", DEFAULT_CRON).split()[:2]
+        return int(h.split(",")[0]), int(m.split(",")[0])
+    except ValueError:
+        return 2, 0
+
+
+def run_fill(settings: Settings, repo: Repository, now: datetime | None = None) -> dict[str, Any] | None:
+    """Lượt lấp dữ liệu: lấy giá tin BĐS còn thiếu + đọc file đính kèm (tài sản còn hạn thiếu thông tin trước, rồi tài
+    sản năm 2026). Dừng trước lượt chính 15 phút. Đang có lượt khác chạy -> bỏ qua. Không gửi Telegram (cộng dồn vào
+    báo cáo lượt chính)."""
+    import json
+    sch = settings.schedule
+    now = now or datetime.now()
+    h, m = _main_hour(settings)
+    stop_at = now.replace(hour=h, minute=m, second=0, microsecond=0) - timedelta(minutes=15)
+    if stop_at <= now:
+        stop_at += timedelta(days=1)
+    budget = min(float(sch.get("fill_minutes", 110)), (stop_at - now).total_seconds() / 60)
+    if budget < 10:
+        return None
+    t0 = time.time()
+    res: dict[str, Any] = {"enriched": 0, "docs_notices": 0, "docs_with_info": 0, "ocr_files": 0}
+    try:
+        with run_lock(settings):
+            res["enriched"] = _enrich_re(settings, repo, int(sch.get("enrich_limit", 2000)))
+            left = budget - (time.time() - t0) / 60
+            if left > 5:
+                st = _docs_then_rebuild(settings, repo, left)
+                if st:
+                    res.update(docs_notices=st.notices, docs_with_info=st.with_info, ocr_files=st.ocr_files)
+            if res["enriched"] or res["docs_notices"]:
+                bk = last_backup(settings)
+                try:
+                    old = not bk or datetime.now() - datetime.strptime(bk["at"], "%Y-%m-%d %H:%M:%S") > timedelta(hours=6)
+                except (KeyError, ValueError):
+                    old = True
+                if old:
+                    res["backup"] = run_backup(settings)
+    except AlreadyRunning:
+        log.info("Lấp dữ liệu: đang có lượt khác chạy – bỏ qua")
+        return None
+    p = settings.path(FILL_STATS)
+    try:
+        acc = json.loads(p.read_text()) if p.exists() else {}
+    except (OSError, ValueError):
+        acc = {}
+    for k in ("enriched", "docs_notices", "docs_with_info", "ocr_files"):
+        acc[k] = int(acc.get(k, 0)) + int(res[k] or 0)
+    acc["runs"] = int(acc.get("runs", 0)) + 1
+    p.write_text(json.dumps(acc))
+    log.info("Lấp dữ liệu xong (%.0f phút): %s", (time.time() - t0) / 60, res)
+    return res
+
+
+def _pop_fill_stats(settings: Settings) -> dict[str, int] | None:
+    import json
+    p = settings.path(FILL_STATS)
+    try:
+        acc = json.loads(p.read_text()) if p.exists() else None
+        p.unlink(missing_ok=True)
+        return acc
+    except (OSError, ValueError):
+        return None
 
 
 def run_backup(settings: Settings) -> dict[str, Any]:
@@ -207,12 +279,14 @@ def format_report(settings: Settings, repo: Repository, report: dict[str, Any]) 
                      + (f"; {esc(ds.details[-1])}" if ds.details else ""))
         if ds.stopped:
             warns.append(f"File đính kèm: {ds.stopped}")
-    sg = (steps.get("suggest") or {}).get("result")
-    if sg:
-        lines.append(f"• Gợi ý gộp phiên mới: <b>{num(sg)}</b> (duyệt trên web: menu Gợi ý gộp)")
     al = (steps.get("alerts") or {}).get("result")
     if al is not None and (getattr(al, "search_msgs", 0) or getattr(al, "reminder_msgs", 0)):
         lines.append(f"• Đã gửi {num(al.search_msgs)} tin bộ lọc, {num(al.reminder_msgs)} tin nhắc hạn (Telegram cá nhân)")
+    fl = report.get("fill")
+    if fl and fl.get("runs"):
+        lines.append(f"• Lấp dữ liệu trong ngày ({num(fl['runs'])} lượt): bổ sung giá {num(fl.get('enriched'))} tin, "
+                     f"đọc file {num(fl.get('docs_notices'))} tin (OCR {num(fl.get('ocr_files'))} file), "
+                     f"có số liệu {num(fl.get('docs_with_info'))} tin")
     bkr = report.get("backup")
     if bkr is not None and not bkr.get("ok"):
         warns.append(f"Sao lưu sau lượt quét LỖI: {bkr.get('error')}")
@@ -254,7 +328,11 @@ def run_scheduler(settings: Settings, repo: Repository, cron: str) -> None:
     sched = BlockingScheduler(timezone="Asia/Ho_Chi_Minh")
     sched.add_job(run_once, CronTrigger.from_crontab(cron, timezone="Asia/Ho_Chi_Minh"),
                   args=[settings, repo], max_instances=1, coalesce=True, id="crawl_all")
-    log.info("Lịch: %s (Asia/Ho_Chi_Minh). Ctrl+C để dừng.", cron)
+    fill_cron = settings.schedule.get("fill_cron", DEFAULT_FILL_CRON)
+    if fill_cron:
+        sched.add_job(run_fill, CronTrigger.from_crontab(fill_cron, timezone="Asia/Ho_Chi_Minh"),
+                      args=[settings, repo], max_instances=1, coalesce=True, id="fill")
+    log.info("Lịch quét tin mới: %s; lấp dữ liệu còn thiếu: %s (Asia/Ho_Chi_Minh). Ctrl+C để dừng.", cron, fill_cron)
     if settings.schedule.get("run_on_start", False):
         run_once(settings, repo)
     job = sched.get_job("crawl_all")

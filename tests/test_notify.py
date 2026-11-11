@@ -84,7 +84,7 @@ def test_zero_found_warns(settings, monkeypatch):
     sent, backups = [], []
     monkeypatch.setattr(scheduler, "send", lambda s, t: sent.append(t) or True)
     monkeypatch.setattr(scheduler, "run_backup", lambda s: backups.append(1) or {"ok": True})
-    monkeypatch.setattr(scheduler, "_docs_then_rebuild", lambda s, r: None)
+    monkeypatch.setattr(scheduler, "_docs_then_rebuild", lambda s, r, m: None)
     rep = scheduler.run_once(settings, repo)
     assert "không đọc được tin nào" in rep["text"] and rep["text"].startswith("⚠️") and sent
     assert backups == [1]                     # sao lưu ngay sau mỗi lượt
@@ -121,3 +121,27 @@ def test_report_backup_line(settings):
         json.dumps({"at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "size": "85M", "offsite": True}))
     txt = scheduler.format_report(settings, repo, dict(base, warnings=[]))
     assert "VPS + Google Drive" in txt and txt.startswith("✅")
+
+
+def test_fill_runs_outside_main_and_reports_in_main(settings, monkeypatch):
+    from types import SimpleNamespace
+    repo = Repository(settings.db_url)
+    repo.init_db()
+    calls = []
+    monkeypatch.setattr(scheduler, "_enrich_re", lambda s, r, n: calls.append("enrich") or 7)
+    monkeypatch.setattr(scheduler, "_docs_then_rebuild", lambda s, r, m: calls.append(("docs", round(m))) or
+                        SimpleNamespace(notices=12, with_info=5, ocr_files=9))
+    monkeypatch.setattr(scheduler, "run_backup", lambda s: {"ok": True})
+    # 22:10: còn đủ thời gian trước 1:45 -> chạy tối đa fill_minutes (110)
+    res = scheduler.run_fill(settings, repo, now=datetime(2026, 11, 12, 22, 10))
+    assert res["enriched"] == 7 and res["docs_notices"] == 12 and calls[0] == "enrich" and calls[1][0] == "docs"
+    # 1:40: sát giờ lượt chính 2:00 -> không chạy
+    assert scheduler.run_fill(settings, repo, now=datetime(2026, 11, 13, 1, 40)) is None
+    # đang có lượt khác giữ khoá -> bỏ qua, không lỗi
+    with scheduler.run_lock(settings):
+        assert scheduler.run_fill(settings, repo, now=datetime(2026, 11, 12, 10, 10)) is None
+    rep = {"started": datetime(2026, 11, 13, 2, 0), "minutes": 1, "warnings": [], "sources": {}, "steps": {},
+           "fill": scheduler._pop_fill_stats(settings)}
+    txt = scheduler.format_report(settings, repo, rep)
+    assert "Lấp dữ liệu trong ngày (1 lượt): bổ sung giá 7 tin, đọc file 12 tin (OCR 9 file), có số liệu 5 tin" in txt
+    assert scheduler._pop_fill_stats(settings) is None          # đã cộng vào báo cáo -> xoá

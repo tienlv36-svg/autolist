@@ -5,7 +5,7 @@ import json
 import logging
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, datetime
 from typing import Any, Callable
 
 import httpx
@@ -184,10 +184,17 @@ def enrich_missing(name: str, settings: Settings, repo: Repository, *, limit: in
     if since:
         q = q.where(NoticeRow.publish_date >= since)
     if realestate:
+        from sqlalchemy import case
+
         from .realestate.db import Property, PropertyNotice
+        now = datetime.now()
         q = (q.join(PropertyNotice, PropertyNotice.notice_id == NoticeRow.id)
              .join(Property, Property.id == PropertyNotice.property_id)
-             .order_by(Property.session_count.desc(), NoticeRow.publish_date.desc()).limit(limit))
+             # còn hạn đăng ký trước (hạn gần trước) → tài sản năm 2026 đã hết hạn (kết thúc gần đây trước) → còn lại
+             .order_by(case((Property.registration_end >= now, 0),
+                            (Property.registration_end >= datetime(2026, 1, 1), 1), else_=2),
+                       case((Property.registration_end >= now, Property.registration_end), else_=None).asc(),
+                       Property.registration_end.desc(), NoticeRow.publish_date.desc()).limit(limit))
     else:
         q = q.order_by(NoticeRow.publish_date.desc()).limit(limit)
     with repo.session() as s:

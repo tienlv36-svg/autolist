@@ -8,9 +8,8 @@ import pytest
 from auction_crawler.alerts import filters_from_query, run_alerts
 from auction_crawler.config import Settings
 from auction_crawler.models import AuctionNotice
-from auction_crawler.realestate.db import CartItem, MergeSuggestion, Property, SavedSearch, Task, User
+from auction_crawler.realestate.db import CartItem, Property, SavedSearch, Task, User
 from auction_crawler.realestate.linker import rebuild
-from auction_crawler.realestate.suggest import compute
 from test_web import csrf, env, login  # noqa: F401  (fixture)
 
 
@@ -121,52 +120,29 @@ def test_reminders_cart_and_tasks(env, tg):  # noqa: F811
 TXT = "Quyền sử dụng đất thửa đất số {p}, tờ bản đồ số 12, diện tích {a}m2 đất ở tại {w}, tỉnh Đồng Tháp"
 
 
-def test_merge_suggestion_and_accept(env):  # noqa: F811
+def test_auto_merge_old_and_new_ward_names(env):  # noqa: F811
     repo, c = env
     fut, past = datetime.now() + timedelta(days=8), datetime(2026, 3, 1)
-    # cùng tờ/thửa nhưng xã/phường ghi khác (tên cũ / mới) -> gom tự động không gộp; gợi ý gộp
-    for sid, w, when, price in [("50", "phường Mỹ Phú", fut, 900_000_000), ("51", "xã Mỹ Tân", past, 1_000_000_000)]:
-        t = TXT.format(p=345, a="123,4", w=w)
+    # cùng tờ/thửa + diện tích, xã ghi tên cũ (trước 7/2025) và tên mới "(nay là …)" -> TỰ ĐỘNG gộp
+    for sid, w, when, price in [("50", "tọa lạc tại xã Mỹ Tân, thành phố Cao Lãnh, tỉnh Đồng Tháp (nay là phường Mỹ Ngãi, tỉnh Đồng Tháp)", fut, 900_000_000),
+                                ("51", "tọa lạc tại xã Mỹ Tân, thành phố Cao Lãnh, tỉnh Đồng Tháp", past, 1_000_000_000)]:
+        t = f"Quyền sử dụng đất thửa đất số 345, tờ bản đồ số 12, diện tích 123,4m2 đất ở {w}"
         repo.upsert(AuctionNotice(source="dgts", source_id=sid, title=t, asset_name=t, asset_owner="Ngân hàng X",
                                   starting_price=price, auction_date=when, registration_end=when - timedelta(days=3),
                                   asset_type="quyen_su_dung_dat", origin="ngan_hang_bao_dam", property_count=1))
-    # khác thửa -> không gợi ý
-    t = TXT.format(p=346, a="123,4", w="phường Mỹ Phú")
+    # cùng tờ/thửa nhưng khác diện tích -> không gộp
+    t = "Quyền sử dụng đất thửa đất số 345, tờ bản đồ số 12, diện tích 300m2 tọa lạc tại xã Tân Hội, tỉnh Đồng Tháp"
     repo.upsert(AuctionNotice(source="dgts", source_id="52", title=t, asset_name=t, starting_price=1_000_000_000,
                               auction_date=past, asset_type="quyen_su_dung_dat", origin="ngan_hang_bao_dam"))
     rebuild(repo)
     with repo.session() as s:
-        a = s.query(Property).filter(Property.parcel_no == "345", Property.registration_end >= datetime.now()).one().id
-        b = s.query(Property).filter(Property.parcel_no == "345", Property.id != a).one().id
-    assert compute(repo) == 1
-    assert compute(repo) == 0                                   # không tạo trùng
-    with repo.session() as s:
-        m = s.query(MergeSuggestion).one()
-        assert (m.a_id, m.b_id) == (a, b) and "cùng tờ 12 thửa 345" in m.reason and "cùng diện tích" in m.reason
-    login(c, "nv1")
-    page = c.get("/merges").text
-    assert f"#{a}" in page and f"#{b}" in page and "Gợi ý gộp <span class=\"cnt\">1</span>" in page
-    tok = csrf(c, "/merges")
-    c.post(f"/merges/{m.id}", data={"csrf": tok, "action": "accept"})
-    with repo.session() as s:
-        p = s.get(Property, a)
-        assert p.session_count == 2 and p.price_first == 1_000_000_000 and p.discount_pct == 10.0
-        assert s.get(Property, b) is None
-        assert s.query(MergeSuggestion).one().status == "accepted"
-    assert compute(repo) == 0
-
-
-def test_reject_is_remembered(env):  # noqa: F811
-    repo, c = env
-    with repo.Session.begin() as s:
-        ids = [p.id for p in s.query(Property).limit(2)]
-        s.add(MergeSuggestion(a_id=ids[0], b_id=ids[1], reason="x", score=2))
+        ps = s.query(Property).filter(Property.parcel_no == "345").all()
+        assert len(ps) == 2
+        p = [x for x in ps if x.session_count == 2][0]
+        assert p.price_first == 1_000_000_000 and p.discount_pct == 10.0
+        assert p.ward == "Phường Mỹ Ngãi" and p.province == "Đồng Tháp"     # tên mới thắng tên cũ
     login(c)
-    tok = csrf(c, "/merges")
-    with repo.session() as s:
-        mid = s.query(MergeSuggestion).one().id
-    c.post(f"/merges/{mid}", data={"csrf": tok, "action": "reject"})
-    assert "Không có gợi ý" in c.get("/merges").text and "#" in c.get("/merges?status=rejected").text
+    assert "Gợi ý gộp" not in c.get("/").text and c.get("/merges").status_code == 404
 
 
 def test_quality_page_and_missing_filter(env):  # noqa: F811
@@ -203,3 +179,50 @@ def test_price_chart_and_stats(env):  # noqa: F811
     assert 'class="pchart"' in page and "Phiên 1" in page and "800 triệu" in page
     st = c.get("/stats").text
     assert "Tài sản còn hạn đăng ký" in st and "Đồng Tháp" in st and "Ngân hàng / TCTD" in st and "Tuần" in st
+
+
+LOC = "Quyền sử dụng đất thửa đất số {p}, tờ bản đồ số 3, diện tích 85m2 tọa lạc tại {w}"
+
+
+def _add(repo, sid, text, place=None, when=None, doc=None):
+    when = when or datetime.now() + timedelta(days=9)
+    repo.upsert(AuctionNotice(source="dgts", source_id=sid, title=text, asset_name=text, address=place,
+                              asset_owner="Chi cục THADS", starting_price=1_000_000_000, auction_date=when,
+                              registration_end=when - timedelta(days=2), asset_type="quyen_su_dung_dat",
+                              origin="thi_hanh_an", property_count=1))
+    if doc is not None:
+        from auction_crawler.storage import NoticeRow
+        with repo.Session.begin() as s:
+            s.query(NoticeRow).filter_by(source_id=sid).one().doc_info = doc
+
+
+def test_location_sources_and_confirmation(env):  # noqa: F811
+    repo, c = env
+    # A: ô nơi có tài sản ghi địa chỉ ngân hàng (bị loại) + mô tả "tọa lạc tại" -> lấy từ mô tả
+    _add(repo, "A", LOC.format(p=1, w="xã Tân Hội, thành phố Cao Lãnh, tỉnh Đồng Tháp"),
+         place="Ngân hàng Agribank, 2 Láng Hạ, Hà Nội")
+    # B: nơi có tài sản và mô tả ghi 2 xã khác nhau -> trống + ứng viên
+    _add(repo, "B", LOC.format(p=2, w="xã Tân Hội, tỉnh Đồng Tháp"), place="xã Tân Thuận Đông, tỉnh Đồng Tháp")
+    # C: tin không ghi xã; tài liệu OCR ghi sai 1 dấu/ký tự tên xã đã biết trong tỉnh -> chuẩn hoá
+    _add(repo, "C", "Quyền sử dụng đất thửa đất số 3, tờ bản đồ số 3, diện tích 85m2, tỉnh Đồng Tháp",
+         doc={"ward": "Xa Tan Hoi", "province": "Đồng Tháp", "methods": {"ward": "ocr", "province": "ocr"}})
+    # D: tài liệu OCR ghi tên xã chưa từng gặp -> không dùng, chờ xác nhận
+    _add(repo, "D", "Quyền sử dụng đất thửa đất số 4, tờ bản đồ số 3, diện tích 85m2, tỉnh Đồng Tháp",
+         doc={"ward": "Xã Hòa Bìnhh Thạnh", "province": "Đồng Tháp", "methods": {"ward": "ocr", "province": "ocr"}})
+    rebuild(repo)
+    with repo.session() as s:
+        get = lambda n: s.query(Property).filter(Property.parcel_no == str(n)).one()  # noqa: E731
+        a, b, cc, d = get(1), get(2), get(3), get(4)
+        assert (a.ward, a.province, a.address) == ("Xã Tân Hội", "Đồng Tháp", None)
+        assert b.ward is None and b.province == "Đồng Tháp" and len(b.loc_candidates) == 2
+        assert cc.ward == "Xã Tân Hội" and cc.field_sources.get("ward") == "tài liệu (OCR)"
+        assert d.ward is None and any(x["ward"] == "Xã Hòa Bìnhh Thạnh" for x in d.loc_candidates)
+        bid, did = b.id, d.id
+    login(c, "nv1")
+    page = c.get("/locations").text
+    assert f"#{bid}" in page and f"#{did}" in page and "Xã Tân Thuận Đông" in page
+    tok = csrf(c, "/locations")
+    c.post(f"/p/{bid}/location", data={"csrf": tok, "ward": "Xã Tân Hội", "province": "Đồng Tháp"})
+    with repo.session() as s:
+        assert s.get(Property, bid).eff("ward") == "Xã Tân Hội"
+    assert f"#{bid}" not in c.get("/locations").text

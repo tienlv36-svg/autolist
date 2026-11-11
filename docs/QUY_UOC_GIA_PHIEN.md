@@ -49,7 +49,7 @@ Nếu tin ghi **lần N** mà phần mềm có **ít hơn N phiên** (các phiê
 
 **Phạm vi:** chỉ tài sản **còn hạn đăng ký**. Tài sản đã hết hạn đăng ký **không quét**.
 
-**Khi nào quét:** trong mỗi lượt chạy tự động (0:00 và 12:00, sau khi thu thập và gom phiên), tối đa 500 tài sản/lượt
+**Khi nào quét:** trong lượt chính 2:00 (sau khi thu thập và gom phiên), tối đa 500 tài sản/lượt
 (`schedule.history_limit` trong `config/settings.yaml`). Mỗi tài sản quét **1 lần**, quét lại khi tài sản có
 phiên mới. Thứ tự: tài sản **thiếu lịch sử** (tin ghi lần N > số phiên) trước → mức ưu tiên cao → sắp hết hạn
 đăng ký. Quét tay: `auction history-scan -n 1000`.
@@ -80,17 +80,17 @@ trong báo cáo Telegram hằng ngày.
 
 ## 5. Số liệu lấy từ file đính kèm (thông báo, quy chế đấu giá)
 
-Mỗi lượt tự động (0:00 và 12:00), sau khi thu thập và quét lịch sử, phần mềm **tải về và lưu lại mọi file đính
-kèm** (thư mục `data/files/<nguồn>/<năm-tháng>/<mã tin>/`, không xoá) **của tài sản còn hạn đăng ký** – gồm file của
+Trong lượt chính 2:00 (tin mới về trước) và các **lượt lấp dữ liệu** trong ngày, phần mềm **tải về và lưu lại file đính
+kèm của TIN GẦN NHẤT** (thư mục `data/files/<nguồn>/<năm-tháng>/<mã tin>/`, không xoá) **của tài sản còn hạn đăng ký** – gồm file của
 mọi phiên của tài sản đó – rồi đọc chữ trong file: PDF có lớp chữ đọc hết; PDF scan / ảnh nhận dạng bằng OCR
 **từ trang đầu, dừng khi đã qua đoạn mô tả tài sản** (thường 1–3 trang, tối đa 8 trang/file); `.docx` đọc trực tiếp;
 file khác (zip, rar, xls…) chỉ lưu. File “thông báo” đọc trước “quy chế”; khi đã có đủ diện tích + tờ/thửa thì các
 file scan còn lại chỉ lưu, chưa OCR. Nhiều tin được đọc **song song** (OCR chạy ưu tiên thấp để web vẫn mượt).
 
-**Tài sản đã hết hạn đăng ký: không tải.** Khi tài sản đó **ra phiên mới** (còn hạn đăng ký trở lại), lượt kế tiếp
-tự tải bổ sung file của mọi phiên. Thứ tự: tài sản **còn hạn ≥ 2 ngày** trước (kịp dùng số liệu; `docs_min_days`) → đang **thiếu diện tích hoặc
-tờ/thửa** trước → mức ưu tiên cao → hạn đăng ký gần hơn; tài sản còn hạn dưới 2 ngày đọc sau cùng. Mỗi lượt đọc tối đa 300 phút
-(`schedule.docs_minutes`), phần còn lại đọc ở lượt sau; ổ cứng dùng ≥ 85% thì dừng tải và báo Telegram.
+Phiên cũ đã có file thì giữ, chưa có thì thôi. Thứ tự: (1) tin **mới về** của tài sản còn hạn; (2) tài sản **còn hạn ≥ 2
+ngày**; (3) còn hạn < 2 ngày — trong mỗi nhóm, tài sản đang **thiếu xã/phường, tỉnh, diện tích hoặc tờ/thửa** trước; (4) khi
+đã xong tài sản còn hạn: tài sản **năm 2026 đã hết hạn còn thiếu thông tin**, kết thúc gần đây trước. Ổ cứng dùng ≥ 85%
+thì dừng tải và báo Telegram.
 
 **Trích thông số** (tổng DT đất, đất ở, đất khác, DT sàn, chiều ngang/dài, số tờ, số thửa) chỉ từ **đoạn mô tả tài
 sản** của file (“Tên tài sản…”, “Tài sản đấu giá…” đến trước “Giá khởi điểm”), theo đúng quy tắc thận trọng: có nhãn
@@ -108,7 +108,28 @@ rõ và chỉ một giá trị; file nhiều thửa/lô → không lấy.
 được ưu tiên. Trên trang chi tiết: mục *“File đính kèm đã lưu trên máy chủ”* (mở file, xem chữ đã đọc); file nguồn
 đã lưu được mở từ máy chủ kể cả khi website nguồn gỡ.
 
-## 6. Việc của người dùng
+## 6. Xã/phường và tỉnh/thành (bộ lọc vị trí)
+
+| Nguồn | Cách dùng |
+|---|---|
+| Ô **nơi có tài sản** của nguồn | Dùng, **trừ** khi là địa chỉ ngân hàng / cơ quan thi hành án / người có tài sản, hoặc nhắc nhiều tỉnh |
+| Cụm **“tọa lạc tại…”, “địa chỉ thửa đất/tài sản…”, “vị trí thửa đất…”, “nơi có tài sản…”** trong mô tả | Dùng. Không dùng “địa chỉ: …” trơn (thường là chỗ ở của chủ tài sản) |
+| **File đính kèm** | Đọc chữ (PDF chữ/.docx): **ưu tiên nhất**, khác tin đăng thì dùng tài liệu. OCR: chỉ dùng khi tên xã/phường **đối chiếu được** với tên đã biết trong cùng tỉnh (trùng khi bỏ dấu, hoặc sai đúng 1 ký tự) |
+
+- Tên trong **“(nay là …)”** (tên sau sắp xếp đơn vị hành chính 2025) **thắng tên cũ**; tên cũ khác tên mới không coi là
+  mâu thuẫn. Tên tỉnh cũ được quy đổi theo Nghị quyết sáp nhập.
+- Các nguồn cùng thời kỳ tên gọi ghi **khác nhau**, hoặc OCR không đối chiếu được → **để trống** và đưa vào trang
+  **Xác nhận vị trí** (chỉ tài sản còn hạn, hạn gần trước) với các **vị trí gợi ý**: bấm một lần là xong, hoặc gõ tay.
+  Giá trị xác nhận tay luôn được ưu tiên.
+
+## 7. Gộp phiên tự động
+
+Ngoài các cách ở mục 1, phần mềm **tự gộp** các tin cùng tỉnh + cùng đúng tờ/thửa **và** trùng diện tích hoặc số giấy
+chứng nhận (kể cả khi xã/phường ghi tên cũ ở phiên trước, tên mới ở phiên sau); hoặc cùng số giấy chứng nhận + cùng
+tờ/thửa (hay cùng diện tích khi cả hai không ghi tờ/thửa). Không gộp khi hai tin ghi xã/phường cùng thời kỳ mà khác nhau,
+hoặc tin nhiều thửa/lô. Gộp sai → bấm **Tách** ở phiên đó (được giữ cố định).
+
+## 8. Việc của người dùng
 
 | Tình huống | Làm gì |
 |---|---|

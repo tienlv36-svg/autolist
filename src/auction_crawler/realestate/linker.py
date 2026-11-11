@@ -26,7 +26,8 @@ from sqlalchemy import select, update
 from ..normalize import plausible_dt, strip_accents
 from ..storage import AssetRow, NoticeRow, Repository
 from .db import Activity, Comment, FileView, Property, PropertyFile, PropertyNotice, Task
-from .extract import RealEstateInfo, extract, place_rejection
+from .history import gcn_serials
+from .extract import RealEstateInfo, extract, place_rejection, ward_key
 
 log = logging.getLogger(__name__)
 
@@ -91,7 +92,8 @@ class Item:
     category: str
     info: RealEstateInfo
     property_count: int | None = None
-    doc: dict | None = None          # thông số trích từ file đính kèm (attachments.merge_file_infos)
+    doc: dict | None = None
+    gcn: frozenset = frozenset()     # số giấy chứng nhận nhắc trong tin (vd "BR 234700")          # thông số trích từ file đính kèm (attachments.merge_file_infos)
 
 
 class DSU:
@@ -148,7 +150,8 @@ def load_items(repo: Repository) -> list[Item]:
                         r.starting_price if single else None, r.deposit if single else None,
                         plausible_dt(r.auction_date), plausible_dt(r.registration_end), plausible_dt(r.publish_date),
                         r.dup_group, cat, info,
-                        r.property_count, r.doc_info if (r.property_count or 1) == 1 else None))
+                        r.property_count, r.doc_info if (r.property_count or 1) == 1 else None,
+                        frozenset(gcn_serials(f"{r.title} {r.asset_name or ''}"[:3000]))))
     return out
 
 
@@ -185,10 +188,59 @@ def cluster(items: list[Item], manual: dict[int, int]) -> list[list[Item]]:
                 dsu.union(dups[it.dup_group], it.nid)
             else:
                 dups[it.dup_group] = it.nid
+    _auto_merge(items, dsu)
     groups: dict[int, list[Item]] = defaultdict(list)
     for it in items:
         groups[dsu.find(it.nid)].append(it)
     return list(groups.values())
+
+
+def _same_area(a: Item, b: Item) -> bool:
+    return bool(a.info.land_area and b.info.land_area and abs(a.info.land_area - b.info.land_area) <= 0.5)
+
+
+def _parcel(it: Item):
+    return (it.info.map_sheet.lstrip("0"), it.info.parcel_no.lstrip("0")) if it.info.map_sheet and it.info.parcel_no else None
+
+
+def _ward_conflict(a: Item, b: Item) -> bool:
+    """Hai tin ghi xã/phường CÙNG thời kỳ tên gọi (cùng tên cũ hoặc cùng tên mới) mà khác nhau -> khác nơi."""
+    return bool(a.info.ward and b.info.ward and a.info.ward_new == b.info.ward_new
+                and ward_key(a.info.ward) != ward_key(b.info.ward))
+
+
+def _auto_merge(items: list[Item], dsu: DSU) -> None:
+    """Gộp TỰ ĐỘNG các tin cùng một BĐS khi đủ căn cứ dù tên xã/phường ghi khác (tên cũ/mới sau sắp xếp 2025):
+    - cùng tỉnh + cùng đúng tờ/thửa, và trùng thêm diện tích hoặc số giấy chứng nhận;
+    - cùng số giấy chứng nhận, tờ/thửa không mâu thuẫn, và cùng tờ/thửa hoặc cùng diện tích.
+    Xã/phường cùng thời kỳ tên gọi mà khác nhau -> không gộp. Tin nhiều thửa/lô không xét.
+    Người dùng đã tách riêng (khoá tay) thì không gộp."""
+    by_parcel: dict[tuple, list[Item]] = defaultdict(list)
+    by_gcn: dict[str, list[Item]] = defaultdict(list)
+    for it in items:
+        if it.info.multi:
+            continue
+        if (pc := _parcel(it)) and it.province:
+            by_parcel[(it.province, *pc)].append(it)
+        for g in it.gcn:
+            by_gcn[g].append(it)
+    for grp in by_parcel.values():
+        for i, a in enumerate(grp):
+            for b in grp[i + 1:]:
+                if _ward_conflict(a, b):
+                    continue
+                if _same_area(a, b) or bool(a.gcn & b.gcn):
+                    dsu.union(a.nid, b.nid)
+    for grp in by_gcn.values():
+        if len(grp) > 20:
+            continue                                  # số GCN quá phổ biến -> nghi bắt nhầm, bỏ
+        for i, a in enumerate(grp):
+            for b in grp[i + 1:]:
+                pa, pb = _parcel(a), _parcel(b)
+                if bool(pa) != bool(pb) or (pa and pa != pb):
+                    continue
+                if (pa or _same_area(a, b)) and not _ward_conflict(a, b):
+                    dsu.union(a.nid, b.nid)
 
 
 def _sessions(members: list[Item]) -> list[list[Item]]:
@@ -233,6 +285,7 @@ def rebuild(repo: Repository) -> dict[str, int]:
                  s.execute(select(PropertyNotice.notice_id, PropertyNotice.property_id, PropertyNotice.manual))}
     manual = {nid: pid for nid, (pid, man) in links.items() if man}
     clusters = cluster(items, manual)
+    known = known_wards(items)
     stats = {"notices": len(items), "properties": len(clusters), "created": 0, "merged": 0}
     with repo.Session.begin() as s:
         pn_all = {pn.notice_id: pn for pn in s.scalars(select(PropertyNotice))}
@@ -255,7 +308,7 @@ def rebuild(repo: Repository) -> dict[str, int]:
                     _merge_into(s, prop, o)
                     stats["merged"] += 1
             used.add(prop.id)
-            _apply(s, prop, members, pn_all, pn_by_prop)
+            _apply(s, prop, members, pn_all, pn_by_prop, known)
         # tài sản không còn thông báo nào và không có dữ liệu người dùng -> xoá
         s.flush()
         for prop in s.scalars(select(Property).where(~Property.links.any())).all():
@@ -273,7 +326,7 @@ DOC_LABELS = {"land_area": "tổng diện tích", "residential_area": "diện t�
 
 def _same(a, b) -> bool:
     if isinstance(a, str) or isinstance(b, str):
-        return str(a).lstrip("0") == str(b).lstrip("0")
+        return ward_key(str(a)).lstrip("0") == ward_key(str(b)).lstrip("0")
     return abs(float(a) - float(b)) <= 0.05
 
 
@@ -302,7 +355,112 @@ def _doc_value(members: list[Item], f: str, label: str, portal, notes: list[str]
     return v, "tài liệu" if method == "text" else "tài liệu (OCR)"
 
 
-def _apply(s, prop: Property, members: list[Item], pn_all: dict, pn_by_prop: dict) -> None:
+def _lev1(a: str, b: str) -> bool:
+    """a, b khác nhau tối đa 1 ký tự (thêm/bớt/thay) – sửa lỗi OCR nhỏ trong tên xã/phường."""
+    if a == b:
+        return True
+    if abs(len(a) - len(b)) > 1:
+        return False
+    i = 0
+    while i < min(len(a), len(b)) and a[i] == b[i]:
+        i += 1
+    return a[i + 1:] == b[i + 1:] or a[i + 1:] == b[i:] or a[i:] == b[i + 1:]
+
+
+def known_wards(items: list[Item]) -> dict[str, dict[str, str]]:
+    """Tên xã/phường đã gặp trong tin đăng (chữ gõ, tin cậy) theo tỉnh: {tỉnh: {khoá bỏ dấu: tên chuẩn}}."""
+    out: dict[str, dict[str, str]] = defaultdict(dict)
+    for it in items:
+        if it.info.ward and it.province:
+            d = out[it.province]
+            k = ward_key(it.info.ward)
+            if k not in d or it.info.ward_new:
+                d[k] = it.info.ward
+    return out
+
+
+def canon_ward(w: str | None, province: str | None, known: dict) -> str | None:
+    """Đối chiếu tên xã/phường đọc bằng OCR với tên đã biết trong cùng tỉnh: trùng (bỏ dấu) hoặc sai đúng 1 ký tự với
+    DUY NHẤT một tên -> trả tên chuẩn; không đối chiếu được -> None (không dùng)."""
+    if not w:
+        return None
+    d = known.get(province or "", {})
+    k = ward_key(w)
+    if k in d:
+        return d[k]
+    close = [v for kk, v in d.items() if len(k) >= 6 and _lev1(k, kk)]
+    return close[0] if len(close) == 1 else None
+
+
+def _location(members: list[Item], known: dict, notes: list[str]) -> tuple[str | None, str | None, dict, list]:
+    """Xã/phường + tỉnh của tài sản. Nguồn: tin đăng (ô nơi có tài sản + cụm 'tọa lạc tại…') và file đính kèm.
+    Tên '(nay là …)' thắng tên cũ; tài liệu chữ thắng tin đăng; OCR chỉ dùng khi đối chiếu được với tên đã biết.
+    Trả (xã, tỉnh, nguồn các trường lấy từ tài liệu, ứng viên để xác nhận khi còn trống)."""
+    srcs: dict = {}
+    cands = [c for m in members for c in (m.info.loc_candidates or [])]
+    # tin đăng: tên mới trước; các phiên cùng thời kỳ tên phải khớp
+    pw, pnew = None, False
+    for era in (True, False):
+        vals = [m.info.ward for m in members if m.info.ward and m.info.ward_new == era]
+        if vals:
+            pw, pnew = (vals[0] if len({ward_key(v) for v in vals}) == 1 else None), era
+            if pw is None:
+                notes.append("Các phiên ghi xã/phường khác nhau – chờ xác nhận vị trí")
+            break
+    provs = {m.province for m in members if m.province}
+    pp = provs.pop() if len(provs) == 1 else None
+    if len({m.province for m in members if m.province}) > 1:
+        notes.append("Các thông báo ghi tỉnh/thành khác nhau – chờ xác nhận vị trí")
+    docs = [m.doc for m in members if m.doc and not m.info.multi]
+    # tỉnh từ tài liệu
+    dps = {d["province"] for d in docs if d.get("province")}
+    if len(dps) == 1:
+        dp = next(iter(dps))
+        dmeth = "text" if any((d.get("methods") or {}).get("province") == "text" for d in docs if d.get("province")) else "ocr"
+        if pp and pp != dp:
+            cands.append({"ward": None, "province": dp, "source": "tài liệu", "new": False})
+            if dmeth == "text":
+                notes.append(f"Tin đăng ghi {pp}, tài liệu ghi {dp} – dùng tài liệu")
+                pp = dp
+                srcs["province"] = "tài liệu"
+            else:
+                notes.append("Tài liệu (OCR) và tin đăng ghi tỉnh khác nhau – chờ xác nhận vị trí")
+                pp = None
+        elif not pp:
+            pp, srcs["province"] = dp, "tài liệu" if dmeth == "text" else "tài liệu (OCR)"
+    # xã/phường từ tài liệu
+    dws = [(d["ward"], bool(d.get("ward_new")), (d.get("methods") or {}).get("ward", "ocr")) for d in docs if d.get("ward")]
+    if dws:
+        era = any(n for _, n, _ in dws)
+        dws = [x for x in dws if x[1] == era]
+        dw = dws[0][0] if len({ward_key(w) for w, _, _ in dws}) == 1 else None
+        dmeth = "text" if any(mm == "text" for _, _, mm in dws) else "ocr"
+        if dw and dmeth == "ocr":
+            cw = canon_ward(dw, pp, known)
+            cands.append({"ward": dw, "province": pp, "source": "tài liệu (OCR)", "new": era})
+            dw = cw
+        elif dw:
+            cands.append({"ward": dw, "province": pp, "source": "tài liệu", "new": era})
+        if dw:
+            if pw is None or (era and not pnew):
+                pw, srcs["ward"] = dw, "tài liệu" if dmeth == "text" else "tài liệu (OCR)"
+            elif era == pnew and ward_key(dw) != ward_key(pw):
+                if dmeth == "text":
+                    notes.append(f"Tin đăng ghi {pw}, tài liệu ghi {dw} – dùng tài liệu")
+                    pw, srcs["ward"] = dw, "tài liệu"
+                else:
+                    notes.append("Tài liệu (OCR) và tin đăng ghi xã/phường khác nhau – chờ xác nhận vị trí")
+                    pw = None
+    seen, uniq = set(), []
+    for c in cands:
+        k = (ward_key(c.get("ward")), c.get("province"))
+        if k not in seen and (c.get("ward") or c.get("province")):
+            seen.add(k)
+            uniq.append(c)
+    return pw, pp, srcs, uniq
+
+
+def _apply(s, prop: Property, members: list[Item], pn_all: dict, pn_by_prop: dict, known: dict | None = None) -> None:
     sessions = _sessions(members)
     existing = dict(pn_by_prop.get(prop.id, {}))
     for no, g in enumerate(sessions, start=1):
@@ -342,8 +500,7 @@ def _apply(s, prop: Property, members: list[Item], pn_all: dict, pn_by_prop: dic
             return None
         return uniq[0] if uniq else None
 
-    prop.province = agree(lambda m: m.province, "tỉnh/thành")
-    prop.ward = agree(lambda m: m.info.ward, "xã/phường")
+    prop.ward, prop.province, loc_src, loc_cands = _location(members, known or {}, notes)
     prop.address = next((m.address for m in sorted(members, key=lambda x: x.auction_date or datetime.min,
                                                    reverse=True) if m.address), None)
     sources: dict[str, str] = {}
@@ -353,7 +510,9 @@ def _apply(s, prop: Property, members: list[Item], pn_all: dict, pn_by_prop: dic
         setattr(prop, f, val)
         if src:
             sources[f] = src
+    sources.update(loc_src)
     prop.field_sources = sources
+    prop.loc_candidates = loc_cands[:8] if (prop.ward is None or prop.province is None) and loc_cands else None
     parcels = []
     for m in members:
         for p_ in m.info.parcels:

@@ -28,7 +28,8 @@ class CrawlSettings(BaseModel):
     stop_when_page_all_seen: bool = True
 
 
-DEFAULT_CRON = "0 0,12 * * *"     # 2 lượt/ngày: 0:00 và 12:00 (giờ Việt Nam)
+DEFAULT_CRON = "0 2 * * *"         # quét tin mới mỗi ngày 1 lần lúc 2:00 (giờ Việt Nam)
+DEFAULT_FILL_CRON = "10 0,6-22/2 * * *"   # lấp dữ liệu còn thiếu: 0:10 và mỗi 2 giờ từ 6:10 đến 22:10
 
 
 class Settings(BaseModel):

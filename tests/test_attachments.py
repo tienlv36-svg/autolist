@@ -88,10 +88,10 @@ def test_fetch_docs_saves_files_and_prefers_document(env, monkeypatch):
     from auction_crawler import pipeline
     orig = pipeline.make_fetcher
     monkeypatch.setattr(pipeline, "make_fetcher", lambda st, src, transport=None: orig(st, src, mock(calls)))
-    st = fetch_docs(s, repo, minutes=5)
-    assert st.notices == 1 and st.files == 2 and st.with_info == 1
-    # CHỈ tài sản còn hạn đăng ký; tài sản đã hết hạn (tin 12) không tải
-    assert not any("auctionInfoId=12" in c or "/12/" in c for c in calls)
+    st = fetch_docs(s, repo, minutes=5, workers=1)
+    # tài sản còn hạn trước; sau đó tài sản năm 2026 đã hết hạn còn thiếu thông tin
+    assert st.notices == 2 and st.files == 4 and st.with_info == 2
+    assert calls[0].endswith("auctionInfoId=11") and any("auctionInfoId=12" in c for c in calls)
     with repo.session() as ss:
         files = ss.query(NoticeFile).all()
         assert all((s.path(s.data_dir) / f.path).exists() for f in files)        # LƯU lại mọi file
@@ -106,7 +106,7 @@ def test_fetch_docs_saves_files_and_prefers_document(env, monkeypatch):
     # chạy lại: không tải lại file đã lưu
     n = len(calls)
     assert fetch_docs(s, repo, minutes=5).notices == 0 and len(calls) == n
-    # tài sản hết hạn có PHIÊN MỚI -> còn hạn trở lại -> tải bổ sung mọi phiên của nó
+    # phiên mới của tài sản -> tải file của TIN GẦN NHẤT; phiên cũ đã có file thì thôi
     fut = datetime.now() + timedelta(days=15)
     repo.upsert(AuctionNotice(source="dgts", source_id="13", title=PORTAL.replace("156", "157") + " lô 12",
                               asset_name=PORTAL.replace("156", "157"), asset_owner="Chi cục THADS TP.HCM",
@@ -116,7 +116,7 @@ def test_fetch_docs_saves_files_and_prefers_document(env, monkeypatch):
                               detail_fetched=True))
     rebuild(repo)
     st = fetch_docs(s, repo, minutes=5)
-    assert st.notices == 2 and any("auctionInfoId=12" in c for c in calls)
+    assert st.notices == 1 and any("auctionInfoId=13" in c for c in calls)
     assert reparse(repo, s) == 3
 
 
@@ -149,7 +149,7 @@ def test_listing_error_retried_then_skipped(env, monkeypatch):
     monkeypatch.setattr(pipeline, "make_fetcher", lambda st, src, transport=None: orig(st, src, bad))
     for i in range(3):
         st = fetch_docs(s, repo, minutes=5)
-        assert st.errors == 1                               # chỉ tài sản còn hạn
+        assert st.errors == 2
     assert fetch_docs(s, repo, minutes=5).errors == 0      # đã tạm bỏ qua sau 3 lần lỗi
 
 
@@ -160,16 +160,24 @@ def test_due_order_prefers_time_left_and_missing_data(tmp_path):
     now = datetime.now()
     cases = [("1", 1, False), ("2", 5, True), ("3", 6, False), ("4", -1, False)]   # (mã, còn ngày, đã đủ số liệu)
     for sid, days, full in cases:
-        t = f"Quyền sử dụng đất thửa đất số {sid}0, tờ bản đồ số 9, phường Long Phước, TP. Hồ Chí Minh"
+        t = f"Quyền sử dụng đất thửa đất số {sid}0, tờ bản đồ số 9, tọa lạc tại phường Long Phước, TP. Hồ Chí Minh"
         if full:
-            t += ", diện tích: 100m2"
+            t += "; diện tích: 100m2"
         repo.upsert(AuctionNotice(source="dgts", source_id=sid, title=t, asset_name=t, starting_price=1_000_000_000,
                                   registration_end=now + timedelta(days=days), auction_date=now + timedelta(days=days + 2),
                                   asset_type="quyen_su_dung_dat", origin="thi_hanh_an", property_count=1))
     rebuild(repo)
+    with repo.Session.begin() as s:          # tin cũ (không phải tin mới về trong 36 giờ)
+        for n in s.query(NoticeRow):
+            n.first_seen = now - timedelta(days=5)
     with repo.session() as s:
         order = [s.get(NoticeRow, i).source_id for i in due_notices(s, 10)]
-    assert order == ["3", "2", "1"]          # còn ≥2 ngày & thiếu số liệu → còn ≥2 ngày đủ → sắp hết hạn; hết hạn: bỏ
+    # còn ≥2 ngày & thiếu → còn ≥2 ngày đủ → sắp hết hạn → đã hết hạn năm 2026 còn thiếu
+    assert order == ["3", "2", "1", "4"]
+    with repo.Session.begin() as s:          # tin 1 mới về -> lấy trước
+        s.query(NoticeRow).filter_by(source_id="1").one().first_seen = now
+    with repo.session() as s:
+        assert [s.get(NoticeRow, i).source_id for i in due_notices(s, 10)][0] == "1"
 
 
 def test_ocr_stops_after_asset_section(monkeypatch, tmp_path):

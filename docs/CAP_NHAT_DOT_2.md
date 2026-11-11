@@ -1,5 +1,8 @@
 # Cập nhật VPS hangdg.com – Đợt 1 + Đợt 2 (làm một lần)
 
+> **Lưu ý:** lịch 0:00 và 12:00 trong tài liệu này đã được thay bằng: quét tin mới **2:00**, các giờ khác lấp dữ liệu
+> còn thiếu (xem `CAP_NHAT_DOT_3.md`).
+
 Bạn chưa cập nhật Đợt 1, nên làm **gộp cả hai đợt** theo các bước dưới đây. Sau khi xong mới làm tiếp phần
 Telegram / Google Drive / khoá SSH (Phần B, C, D của `CAP_NHAT_DOT_1.md`).
 

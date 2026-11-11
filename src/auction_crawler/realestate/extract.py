@@ -73,6 +73,8 @@ class RealEstateInfo:
     ward: str | None = None
     province: str | None = None
     province_raw: str | None = None
+    ward_new: bool = False                 # tên xã/phường lấy từ "(nay là ...)" (tên sau sắp xếp 2025)
+    loc_candidates: list[dict] = field(default_factory=list)   # các vị trí khác nhau tìm thấy (để xác nhận 1 chạm)
     multi: bool = False                    # tin gồm nhiều thửa/lô
     session_hint: int | None = None
     has_house: bool = False
@@ -254,6 +256,98 @@ def detect_ward(*texts: str | None) -> str | None:
     return None
 
 
+# Cụm chỉ NƠI CÓ TÀI SẢN (không nhầm với địa chỉ chủ tài sản "ông A, địa chỉ: ...")
+LOC_MARK = re.compile(r"t[oọ][aạ]\s*l[aạ]c(?:\s+t[aạ]i)?|đ[iị]a\s*ch[iỉ]\s+(?:th[uử]a\s*đ[aấ]t|t[aà]i\s*s[aả]n|nh[aà]\s*đ[aấ]t|"
+                      r"b[aấ]t\s*đ[oộ]ng\s*s[aả]n|khu\s*đ[aấ]t|c[aă]n\s*nh[aà])|n[oơ]i\s*c[oó]\s*t[aà]i\s*s[aả]n|"
+                      r"v[iị]\s*tr[ií]\s+(?:th[uử]a\s*đ[aấ]t|t[aà]i\s*s[aả]n|khu\s*đ[aấ]t)", re.I)
+NAY_RE = re.compile(r"\(\s*nay\s*l[àa]\s*:?\s*([^)]+)\)", re.I)
+
+
+def ward_key(w: str | None) -> str:
+    """So sánh tên xã/phường bỏ dấu, bỏ khoảng trắng thừa (OCR hay sai dấu)."""
+    return re.sub(r"\s+", " ", strip_accents(w or "")).strip()
+
+
+def _cut_clause(seg: str) -> str:
+    """Lấy vế câu vị trí: tới ';' / xuống dòng / '. ' nằm NGOÀI ngoặc."""
+    depth, out = 0, []
+    for i, ch in enumerate(seg):
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth = max(0, depth - 1)
+        elif depth == 0 and (ch in ";\n" or (ch == "." and seg[i + 1:i + 2] == " ")):
+            break
+        out.append(ch)
+    return "".join(out)
+
+
+@dataclass
+class Loc:
+    ward: str | None = None
+    ward_new: bool = False
+    province: str | None = None
+    wards: list[str] = field(default_factory=list)        # mọi xã/phường khác nhau (cùng thời kỳ tên gọi)
+    provinces: list[str] = field(default_factory=list)
+
+
+def clause_location(text: str | None) -> Loc:
+    """Vị trí trong MỘT đoạn chỉ địa điểm: ưu tiên tên trong '(nay là ...)'; chỉ nhận khi duy nhất."""
+    loc = Loc()
+    if not text:
+        return loc
+    new = list(dict.fromkeys(w for seg in NAY_RE.findall(text) for w in _wards(seg)))
+    old = list(dict.fromkeys(_wards(NAY_RE.sub(" ", text))))
+    pool, loc.ward_new = (new, True) if new else (old, False)
+    loc.wards = pool
+    if len({ward_key(w) for w in pool}) == 1:
+        loc.ward = pool[0]
+    loc.provinces = list(dict.fromkeys(n for n, _ in (_provinces_in(" ".join(NAY_RE.findall(text))) or
+                                                      _provinces_in(text))))
+    if len(loc.provinces) == 1:
+        loc.province = loc.provinces[0]
+    return loc
+
+
+def asset_location(text: str | None) -> Loc:
+    """Vị trí tài sản từ các cụm 'tọa lạc tại …', 'địa chỉ thửa đất/tài sản …', 'nơi có tài sản …', 'vị trí thửa đất …'.
+    Không dùng 'địa chỉ: …' trơn (thường là chỗ ở của chủ tài sản)."""
+    if not text:
+        return Loc()
+    clauses = [_cut_clause(text[m.end():m.end() + 260]) for m in LOC_MARK.finditer(text)]
+    if not clauses:
+        return Loc()
+    return clause_location(" ; ".join(clauses))
+
+
+def pick_location(sources: list[tuple[str, Loc]]) -> tuple[str | None, bool, str | None, list[dict]]:
+    """Chọn xã/phường + tỉnh từ nhiều nguồn (đã xếp theo độ tin cậy). Tên '(nay là …)' thắng tên cũ; các nguồn cùng
+    thời kỳ phải KHỚP nhau (bỏ dấu), không khớp -> để trống. Trả (xã, là_tên_mới, tỉnh, ứng viên để xác nhận)."""
+    cands: list[dict] = []
+    for src, loc in sources:
+        for w in loc.wards or [None]:
+            if w or loc.province:
+                cands.append({"ward": w, "province": loc.province, "source": src, "new": loc.ward_new})
+    ward, ward_new = None, False
+    for era in (True, False):
+        vals = [loc for _, loc in sources if loc.wards and loc.ward_new == era]
+        if not vals:
+            continue
+        keys = {ward_key(w) for loc in vals for w in loc.wards}
+        if len(keys) == 1:
+            ward, ward_new = vals[0].wards[0], era
+        break                                   # có tên mới -> không xét tên cũ (tên cũ khác tên mới là bình thường)
+    provs = {p for _, loc in sources for p in loc.provinces}
+    province = provs.pop() if len(provs) == 1 else None
+    seen, uniq = set(), []
+    for c in cands:
+        k = (ward_key(c["ward"]), c["province"])
+        if k not in seen:
+            seen.add(k)
+            uniq.append(c)
+    return ward, ward_new, province, uniq
+
+
 def _province_keys() -> list[tuple[str, str, str]]:
     keys = []
     for new, olds in PROVINCE_MERGE.items():
@@ -363,11 +457,32 @@ def extract(title: str, asset_name: str | None = None, address: str | None = Non
         info.notes.append("Tin nhắc nhiều tờ/thửa – số tờ, số thửa để trống")
     _areas(text, norm, info)
     _dimensions(norm, info)
+    # vị trí: (1) ô nơi có tài sản của nguồn, (2) cụm "tọa lạc tại…/địa chỉ thửa đất…" trong mô tả; các nguồn phải khớp
+    src_locs = [(s, l) for s, l in (("nơi có tài sản", clause_location(address)), ("mô tả tài sản", asset_location(text)))
+                if l.wards or l.provinces]
+    if src_locs:
+        w, w_new, pv, cands = pick_location(src_locs)
+        info.ward, info.ward_new, info.loc_candidates = w, w_new, cands
+        if w is None and any(l.wards for _, l in src_locs):
+            info.notes.append("Các nguồn ghi xã/phường khác nhau – chờ xác nhận vị trí")
+        if pv:
+            info.province, info.province_raw = pv, pv
+        elif len({p for _, l in src_locs for p in l.provinces}) > 1:
+            info.notes.append("Các nguồn ghi tỉnh/thành khác nhau – chờ xác nhận vị trí")
+            info.province = info.province_raw = None
+            return _finish(info, title, asset_name, norm)
+        else:
+            info.province, info.province_raw = detect_province_strict(address, asset_name, title)
+        return _finish(info, title, asset_name, norm)
     info.ward = detect_ward(address, asset_name, title)
     if info.ward is None and (address or asset_name):
         if _wards(address or "") or _wards(asset_name or title or ""):
             info.notes.append("Tin nhắc nhiều xã/phường – để trống")
     info.province, info.province_raw = detect_province_strict(address, asset_name, title)
+    return _finish(info, title, asset_name, norm)
+
+
+def _finish(info: RealEstateInfo, title: str, asset_name: str | None, norm: str) -> RealEstateInfo:
     info.session_hint = detect_session_hint(f"{title} {asset_name or ''}")
     info.has_house = bool(re.search(r"\bnha o\b|can ho|nha xay|tai san gan lien|cong trinh xay dung|biet thu|nha \d+ tang", norm))
     return info
