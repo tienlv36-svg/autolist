@@ -125,7 +125,8 @@ def _docs_then_rebuild(settings: Settings, repo: Repository):
     if minutes <= 0:
         return None
     st = fetch_docs(settings, repo, minutes=minutes, max_disk_pct=float(sch.get("docs_max_disk_pct", 85)),
-                    ocr_max_pages=int(sch.get("ocr_max_pages", 30)))
+                    ocr_max_pages=int(sch.get("ocr_max_pages", 8)), workers=int(sch.get("docs_workers", 0)),
+                    min_days=float(sch.get("docs_min_days", 2)))
     if st.notices:
         rebuild(repo)
     return st

@@ -24,4 +24,6 @@ schedule:                        # dùng với lệnh `auction schedule`
   ocr_limit: 0                   # >0: mỗi lượt OCR giá từ PDF cho N tin taisancong (cần tesseract)
   docs_minutes: 300              # mỗi lượt tải + đọc file đính kèm tối đa N phút (0 = tắt); còn lại đọc tiếp lượt sau
   docs_max_disk_pct: 85          # ổ cứng đã dùng >= N% -> dừng tải file đính kèm, báo Telegram
-  ocr_max_pages: 30              # OCR tối đa N trang mỗi file scan
+  ocr_max_pages: 8               # OCR tối đa N trang mỗi file scan (dừng sớm khi đã qua đoạn mô tả tài sản)
+  docs_workers: 0                # số tin đọc song song; 0 = số nhân CPU (OCR chạy ưu tiên thấp, web vẫn mượt)
+  docs_min_days: 2               # ưu tiên tài sản còn hạn đăng ký ≥ N ngày (kịp dùng số liệu); sắp hết hạn đọc sau

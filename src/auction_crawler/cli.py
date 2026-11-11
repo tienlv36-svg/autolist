@@ -319,7 +319,8 @@ def history_scan(limit: int = typer.Option(500, "--limit", "-n")):
 @app.command("docs-fetch")
 def docs_fetch(minutes: float = typer.Option(300, "--minutes", "-m", help="Giới hạn thời gian (phút)"),
                limit: int = typer.Option(100_000, "--limit", "-n", help="Tối đa N tin"),
-               max_disk: float = typer.Option(85, "--max-disk", help="Dừng khi ổ cứng đã dùng >= %")):
+               max_disk: float = typer.Option(85, "--max-disk", help="Dừng khi ổ cứng đã dùng >= %"),
+               workers: int = typer.Option(0, "--workers", "-w", help="Số tin xử lý song song (0 = số nhân CPU)")):
     """Tải, LƯU và đọc file đính kèm của tin BĐS (còn hạn đăng ký trước), rồi gom phiên lại
     (số liệu trong tài liệu được ưu tiên). Chạy lâu -> dùng tmux."""
     from .attachments import fetch_docs
@@ -329,7 +330,9 @@ def docs_fetch(minutes: float = typer.Option(300, "--minutes", "-m", help="Giớ
     s, repo = _setup()
     with run_lock(s):
         st = fetch_docs(s, repo, minutes=minutes, limit=limit, max_disk_pct=max_disk,
-                        ocr_max_pages=int(s.schedule.get("ocr_max_pages", 30)))
+                        ocr_max_pages=int(s.schedule.get("ocr_max_pages", 8)),
+                        workers=workers or int(s.schedule.get("docs_workers", 0)),
+                        min_days=float(s.schedule.get("docs_min_days", 2)))
         if st.notices:
             rebuild(repo)
     console.print(f"Đọc {st.notices} tin, lưu {st.files} file ({st.bytes / 1048576:.0f} MB), OCR {st.ocr_files}, "

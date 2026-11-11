@@ -82,11 +82,14 @@ trong báo cáo Telegram hằng ngày.
 
 Mỗi lượt tự động (0:00 và 12:00), sau khi thu thập và quét lịch sử, phần mềm **tải về và lưu lại mọi file đính
 kèm** (thư mục `data/files/<nguồn>/<năm-tháng>/<mã tin>/`, không xoá) **của tài sản còn hạn đăng ký** – gồm file của
-mọi phiên của tài sản đó – rồi **đọc hết** chữ trong file: PDF có lớp chữ đọc thẳng; PDF scan / ảnh nhận dạng bằng
-OCR (tối đa 30 trang/file); `.docx` đọc trực tiếp; file khác (zip, rar, xls…) chỉ lưu.
+mọi phiên của tài sản đó – rồi đọc chữ trong file: PDF có lớp chữ đọc hết; PDF scan / ảnh nhận dạng bằng OCR
+**từ trang đầu, dừng khi đã qua đoạn mô tả tài sản** (thường 1–3 trang, tối đa 8 trang/file); `.docx` đọc trực tiếp;
+file khác (zip, rar, xls…) chỉ lưu. File “thông báo” đọc trước “quy chế”; khi đã có đủ diện tích + tờ/thửa thì các
+file scan còn lại chỉ lưu, chưa OCR. Nhiều tin được đọc **song song** (OCR chạy ưu tiên thấp để web vẫn mượt).
 
 **Tài sản đã hết hạn đăng ký: không tải.** Khi tài sản đó **ra phiên mới** (còn hạn đăng ký trở lại), lượt kế tiếp
-tự tải bổ sung file của mọi phiên. Thứ tự: mức ưu tiên cao → sắp hết hạn đăng ký. Mỗi lượt đọc tối đa 300 phút
+tự tải bổ sung file của mọi phiên. Thứ tự: tài sản **còn hạn ≥ 2 ngày** trước (kịp dùng số liệu; `docs_min_days`) → đang **thiếu diện tích hoặc
+tờ/thửa** trước → mức ưu tiên cao → hạn đăng ký gần hơn; tài sản còn hạn dưới 2 ngày đọc sau cùng. Mỗi lượt đọc tối đa 300 phút
 (`schedule.docs_minutes`), phần còn lại đọc ở lượt sau; ổ cứng dùng ≥ 85% thì dừng tải và báo Telegram.
 
 **Trích thông số** (tổng DT đất, đất ở, đất khác, DT sàn, chiều ngang/dài, số tờ, số thửa) chỉ từ **đoạn mô tả tài

@@ -151,3 +151,44 @@ def test_listing_error_retried_then_skipped(env, monkeypatch):
         st = fetch_docs(s, repo, minutes=5)
         assert st.errors == 1                               # chỉ tài sản còn hạn
     assert fetch_docs(s, repo, minutes=5).errors == 0      # đã tạm bỏ qua sau 3 lần lỗi
+
+
+def test_due_order_prefers_time_left_and_missing_data(tmp_path):
+    from auction_crawler.attachments import due_notices
+    repo = Repository(f"sqlite:///{tmp_path}/o.db")
+    repo.init_db()
+    now = datetime.now()
+    cases = [("1", 1, False), ("2", 5, True), ("3", 6, False), ("4", -1, False)]   # (mã, còn ngày, đã đủ số liệu)
+    for sid, days, full in cases:
+        t = f"Quyền sử dụng đất thửa đất số {sid}0, tờ bản đồ số 9, phường Long Phước, TP. Hồ Chí Minh"
+        if full:
+            t += ", diện tích: 100m2"
+        repo.upsert(AuctionNotice(source="dgts", source_id=sid, title=t, asset_name=t, starting_price=1_000_000_000,
+                                  registration_end=now + timedelta(days=days), auction_date=now + timedelta(days=days + 2),
+                                  asset_type="quyen_su_dung_dat", origin="thi_hanh_an", property_count=1))
+    rebuild(repo)
+    with repo.session() as s:
+        order = [s.get(NoticeRow, i).source_id for i in due_notices(s, 10)]
+    assert order == ["3", "2", "1"]          # còn ≥2 ngày & thiếu số liệu → còn ≥2 ngày đủ → sắp hết hạn; hết hạn: bỏ
+
+
+def test_ocr_stops_after_asset_section(monkeypatch, tmp_path):
+    import auction_crawler.attachments as att
+    pages = ["Căn cứ Luật đấu giá...", "1. Tên tài sản: thửa đất số 5, diện tích: 90m2", "2. Giá khởi điểm: 1 tỷ",
+             "Quy chế trang 4", "Quy chế trang 5"]
+    calls = []
+
+    class R:
+        returncode = 0
+
+    def fake_run(cmd, **kw):
+        i = int(cmd[cmd.index("-f") + 1])
+        (pathlib.Path(cmd[-1] + "-1.png")).write_bytes(b"x")
+        calls.append(i)
+        return R()
+    import pathlib
+    monkeypatch.setattr(att.subprocess, "run", fake_run)
+    monkeypatch.setattr(att, "_ocr_image", lambda img: pages[int(img.name[1:].split("-")[0]) - 1])
+    text = att._ocr_pdf(tmp_path / "x.pdf", 8, 5)
+    assert calls == [1, 2, 3] and "Giá khởi điểm" in text and "trang 4" not in text
+    assert att.section_complete(text) and not att.section_complete("1. Tên tài sản: thửa đất")

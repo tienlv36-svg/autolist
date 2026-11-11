@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import os
+import threading
 import re
 import shutil
 import subprocess
@@ -19,12 +21,13 @@ import tempfile
 import time
 import zipfile
 from dataclasses import dataclass, field
-from datetime import datetime
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote, unquote
 
-from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, select
+from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, and_, case, func, select
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .config import Settings
@@ -76,13 +79,40 @@ def ocr_available() -> bool:
 
 
 def _ocr_image(img: Path) -> str:
-    res = subprocess.run(["tesseract", str(img), "-", "-l", "vie", "--psm", "6"],
-                         capture_output=True, text=True, timeout=300)
+    # nice: nhường CPU cho web; OMP_THREAD_LIMIT=1: mỗi tiến trình 1 luồng (song song bằng nhiều tin cùng lúc)
+    res = subprocess.run(["nice", "-n", "10", "tesseract", str(img), "-", "-l", "vie", "--psm", "6"],
+                         capture_output=True, text=True, timeout=300, env={**os.environ, "OMP_THREAD_LIMIT": "1"})
     return res.stdout
 
 
-def read_text(path: Path, ocr_max_pages: int = 30) -> tuple[str, str]:
-    """(chữ, cách đọc). Đọc HẾT các trang có lớp chữ; trang scan -> OCR (tối đa ocr_max_pages trang/file)."""
+def section_complete(text: str) -> bool:
+    """Đã đọc qua hết đoạn mô tả tài sản (có tiêu đề tài sản và sau đó là 'giá khởi điểm'/'tiền đặt trước'…)."""
+    norm = strip_accents(text or "")
+    m = START_RE.search(norm)
+    return bool(m and STOP_RE.search(norm, m.end() + 20))
+
+
+def _ocr_pdf(path: Path, max_pages: int, pages: int) -> str:
+    """OCR từng trang từ đầu, DỪNG khi đã qua hết đoạn mô tả tài sản (thường 1–3 trang đầu) hoặc tới max_pages."""
+    out: list[str] = []
+    last = min(max_pages, pages) if pages else max_pages
+    with tempfile.TemporaryDirectory() as d:
+        for i in range(1, last + 1):
+            r = subprocess.run(["nice", "-n", "10", "pdftoppm", "-r", "200", "-gray", "-f", str(i), "-l", str(i),
+                                "-png", str(path), f"{d}/p{i}"], capture_output=True, timeout=300)
+            imgs = sorted(Path(d).glob(f"p{i}*.png"))
+            if r.returncode != 0 or not imgs:
+                break                                         # quá trang cuối
+            out.append(_ocr_image(imgs[0]))
+            imgs[0].unlink(missing_ok=True)
+            if section_complete("\n".join(out)):
+                break
+    return "\n".join(out)
+
+
+def read_text(path: Path, ocr_max_pages: int = 8, allow_ocr: bool = True) -> tuple[str, str]:
+    """(chữ, cách đọc). PDF có lớp chữ: đọc HẾT các trang. PDF scan / ảnh: OCR từ trang đầu, dừng khi đã qua đoạn mô tả
+    tài sản (tối đa ocr_max_pages trang). allow_ocr=False -> file cần OCR trả ('', 'deferred') để đọc sau."""
     ext = path.suffix.lower()
     if ext == ".pdf":
         text, pages = "", 0
@@ -98,18 +128,16 @@ def read_text(path: Path, ocr_max_pages: int = 30) -> tuple[str, str]:
             return text, "text"
         if not ocr_available():
             return text, "none"
-        with tempfile.TemporaryDirectory() as d:
-            subprocess.run(["pdftoppm", "-r", "200", "-gray", "-f", "1", "-l", str(ocr_max_pages), "-png",
-                            str(path), f"{d}/pg"], check=True, capture_output=True, timeout=900)
-            out = [_ocr_image(img) for img in sorted(Path(d).glob("pg-*.png"))]
-        return "\n".join(out), "ocr"
+        if not allow_ocr:
+            return "", "deferred"
+        return _ocr_pdf(path, ocr_max_pages, pages), "ocr"
     if ext == ".docx":
         with zipfile.ZipFile(path) as z:
             xml = z.read("word/document.xml").decode("utf-8", "ignore")
         xml = re.sub(r"</w:p>", "\n", xml)
         return re.sub(r"<[^>]+>", "", xml).replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">"), "docx"
     if ext in (".jpg", ".jpeg", ".png", ".tif", ".tiff") and ocr_available():
-        return _ocr_image(path), "ocr"
+        return (_ocr_image(path), "ocr") if allow_ocr else ("", "deferred")
     return "", "unsupported"
 
 
@@ -203,31 +231,59 @@ def _disk_pct(p: Path) -> float:
 
 
 # ------------------------------------------------------------------ chạy
-def due_notices(s, limit: int) -> list[int]:
+def due_notices(s, limit: int, min_days: float = 2) -> list[int]:
+    """Tin cần đọc file, thứ tự: tài sản còn hạn ≥ min_days ngày trước (kịp dùng số liệu) → đang THIẾU diện tích hoặc
+    tờ/thửa trước → ưu tiên cao → hạn đăng ký gần hơn. Tài sản còn hạn < min_days ngày: đọc sau cùng."""
     from .realestate.db import Property, PropertyNotice
     now = datetime.now()
+    eff = lambda c: func.coalesce(getattr(Property, f"{c}_manual"), getattr(Property, c))  # noqa: E731
+    has_all = and_(eff("land_area").is_not(None), eff("parcel_no").is_not(None))
     q = (select(NoticeRow.id)
          .join(PropertyNotice, PropertyNotice.notice_id == NoticeRow.id)
          .join(Property, Property.id == PropertyNotice.property_id)
          .where(NoticeRow.docs_at.is_(None), Property.registration_end >= now)   # chỉ tài sản CÒN HẠN
-         .order_by(Property.priority.desc(), Property.registration_end.asc(), NoticeRow.publish_date.desc())
+         .order_by(case((Property.registration_end >= now + timedelta(days=min_days), 0), else_=1),
+                   case((has_all, 1), else_=0),
+                   Property.priority.desc(), Property.registration_end.asc(), NoticeRow.publish_date.desc())
          .limit(limit))
     return list(s.scalars(q))
 
 
-def process_notice(nid: int, repo: Repository, settings: Settings, fetchers: dict, stats: DocStats,
-                   ocr_max_pages: int = 30) -> dict[str, Any]:
+_FILE_ORDER = (r"thong bao", r"quy che", r"")      # thông báo đấu giá thường mô tả tài sản rõ nhất
+
+
+def _file_rank(name: str) -> int:
+    n = strip_accents(name or "")
+    return next(i for i, k in enumerate(_FILE_ORDER) if k in n)
+
+
+def _complete(infos: list[tuple[dict, str]]) -> bool:
+    """Đã có đủ diện tích đất + tờ/thửa từ các file đã đọc -> không cần OCR thêm file scan khác."""
+    m = merge_file_infos(infos)
+    return bool(m.get("multi") or (m.get("land_area") and m.get("parcel_no")))
+
+
+_fetch_lock = threading.Lock()
+
+
+def _fetcher(fetchers: dict, settings: Settings, name: str):
     from .pipeline import make_fetcher
     from .sources import get_source
+    with _fetch_lock:
+        if name not in fetchers:
+            fetchers[name] = make_fetcher(settings, get_source(name))
+        return fetchers[name]
+
+
+def process_notice(nid: int, repo: Repository, settings: Settings, fetchers: dict, stats: DocStats,
+                   ocr_max_pages: int = 8) -> dict[str, Any]:
     base = settings.path(settings.data_dir)
     with repo.session() as s:
         n = s.get(NoticeRow, nid)
         known = {f.url: f for f in s.scalars(select(NoticeFile).where(NoticeFile.notice_id == nid))}
         src_name, sid, pub = n.source, n.source_id, n.publish_date
-        if src_name not in fetchers:
-            fetchers[src_name] = make_fetcher(settings, get_source(src_name))
-        files = list_files(n, fetchers[src_name])
-    fetcher = fetchers[src_name]
+        fetcher = _fetcher(fetchers, settings, src_name)
+        files = sorted(list_files(n, fetcher), key=lambda f: _file_rank(f[0]))
     folder = Path("files") / src_name / (pub.strftime("%Y-%m") if pub else "khac") / _safe_name(sid)
     infos: list[tuple[dict, str]] = []
     seen_names: set[str] = set()
@@ -255,10 +311,12 @@ def process_notice(nid: int, repo: Repository, settings: Settings, fetchers: dic
             except Exception as e:  # noqa: BLE001
                 nf.error = repr(e)[:300]
                 stats.errors += 1
-        if nf.path and nf.method is None:
+        if nf.path and nf.method in (None, "deferred"):
             p = base / nf.path
             try:
-                text, method = read_text(p, ocr_max_pages) if p.suffix.lower() in TEXT_EXT else ("", "unsupported")
+                # đã đủ số liệu từ file trước -> file scan còn lại chỉ lưu, chưa OCR ('deferred', đọc khi cần)
+                text, method = (read_text(p, ocr_max_pages, allow_ocr=not _complete(infos))
+                                if p.suffix.lower() in TEXT_EXT else ("", "unsupported"))
                 if text:
                     p.with_name(p.name + ".txt").write_text(text, encoding="utf-8")
                 nf.method, nf.chars = method, len(text)
@@ -282,41 +340,66 @@ def process_notice(nid: int, repo: Repository, settings: Settings, fetchers: dic
     return doc
 
 
+def default_workers() -> int:
+    """Số tin xử lý song song = số nhân CPU (tối thiểu 2: còn chờ mạng khi tải file). OCR chạy với độ ưu tiên thấp
+    (nice), nên web vẫn được ưu tiên CPU."""
+    return max(2, os.cpu_count() or 2)
+
+
 def fetch_docs(settings: Settings, repo: Repository, *, minutes: float = 300, limit: int = 100_000,
-               max_disk_pct: float = 85, ocr_max_pages: int = 30) -> DocStats:
-    """Tải + đọc file đính kèm cho các tin chưa xử lý, trong giới hạn thời gian / ổ cứng."""
+               max_disk_pct: float = 85, ocr_max_pages: int = 8, workers: int = 0, min_days: float = 2) -> DocStats:
+    """Tải + đọc file đính kèm cho các tin chưa xử lý, song song nhiều tin, trong giới hạn thời gian / ổ cứng."""
     stats = DocStats()
     deadline = time.monotonic() + minutes * 60
+    workers = workers or default_workers()
     with repo.session() as s:
-        ids = due_notices(s, limit)
+        ids = due_notices(s, limit, min_days)
     fetchers: dict = {}
+
+    def one(nid: int) -> DocStats:
+        st = DocStats()
+        try:
+            process_notice(nid, repo, settings, fetchers, st, ocr_max_pages)
+        except Exception as e:  # noqa: BLE001
+            st.errors += 1
+            log.warning("File đính kèm tin #%s lỗi: %r", nid, e)
+            with repo.Session.begin() as s:          # lỗi 3 lần liên tiếp -> tạm bỏ qua (đọc lại khi tin cập nhật)
+                row = s.get(NoticeRow, nid)
+                tries = int((row.doc_info or {}).get("tries", 0)) + 1
+                row.doc_info = {"tries": tries, "error": repr(e)[:200]}
+                if tries >= 3:
+                    row.docs_at = datetime.now()
+        return st
+
+    def add(st: DocStats) -> None:
+        for k in ("notices", "files", "bytes", "ocr_files", "with_info", "errors"):
+            setattr(stats, k, getattr(stats, k) + getattr(st, k))
+
+    todo = list(ids)
     try:
-        for nid in ids:
-            if time.monotonic() > deadline:
-                stats.stopped = "hết thời gian của lượt – đọc tiếp ở lượt sau"
-                break
-            if _disk_pct(settings.path(settings.data_dir)) >= max_disk_pct:
-                stats.stopped = f"ổ cứng đã dùng ≥ {max_disk_pct:.0f}% – dừng tải file"
-                break
-            try:
-                process_notice(nid, repo, settings, fetchers, stats, ocr_max_pages)
-            except Exception as e:  # noqa: BLE001
-                stats.errors += 1
-                log.warning("File đính kèm tin #%s lỗi: %r", nid, e)
-                with repo.Session.begin() as s:          # lỗi 3 lần liên tiếp -> tạm bỏ qua (đọc lại khi tin cập nhật)
-                    row = s.get(NoticeRow, nid)
-                    tries = int((row.doc_info or {}).get("tries", 0)) + 1
-                    row.doc_info = {"tries": tries, "error": repr(e)[:200]}
-                    if tries >= 3:
-                        row.docs_at = datetime.now()
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            running: set = set()
+            while todo or running:
+                while todo and len(running) < workers and not stats.stopped:
+                    if time.monotonic() > deadline:
+                        stats.stopped = "hết thời gian của lượt – đọc tiếp ở lượt sau"
+                    elif _disk_pct(settings.path(settings.data_dir)) >= max_disk_pct:
+                        stats.stopped = f"ổ cứng đã dùng ≥ {max_disk_pct:.0f}% – dừng tải file"
+                    else:
+                        running.add(pool.submit(one, todo.pop(0)))
+                if not running:
+                    break
+                done, running = wait(running, return_when=FIRST_COMPLETED)
+                for f in done:
+                    add(f.result())
     finally:
         for f in fetchers.values():
             f.close()
     with repo.session() as s:
         stats.details.append(f"còn {len(due_notices(s, 1_000_000)):,} tin (tài sản còn hạn) chưa đọc file".replace(",", "."))
-    log.info("File đính kèm: %s tin, tải %s file (%.1f MB), OCR %s, có số liệu %s, lỗi %s%s",
+    log.info("File đính kèm: %s tin, tải %s file (%.1f MB), OCR %s, có số liệu %s, lỗi %s, %s luồng%s",
              stats.notices, stats.files, stats.bytes / 1048576, stats.ocr_files, stats.with_info, stats.errors,
-             f" ({stats.stopped})" if stats.stopped else "")
+             workers, f" ({stats.stopped})" if stats.stopped else "")
     return stats
 
 
