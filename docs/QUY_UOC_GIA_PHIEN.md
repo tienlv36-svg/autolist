@@ -116,8 +116,14 @@ rõ và chỉ một giá trị; file nhiều thửa/lô → không lấy.
 | Cụm **“tọa lạc tại…”, “địa chỉ thửa đất/tài sản…”, “vị trí thửa đất…”, “nơi có tài sản…”** trong mô tả | Dùng. Không dùng “địa chỉ: …” trơn (thường là chỗ ở của chủ tài sản) |
 | **File đính kèm** | Đọc chữ (PDF chữ/.docx): **ưu tiên nhất**, khác tin đăng thì dùng tài liệu. OCR: chỉ dùng khi tên xã/phường **đối chiếu được** với tên đã biết trong cùng tỉnh (trùng khi bỏ dấu, hoặc sai đúng 1 ký tự) |
 
-- Tên trong **“(nay là …)”** (tên sau sắp xếp đơn vị hành chính 2025) **thắng tên cũ**; tên cũ khác tên mới không coi là
-  mâu thuẫn. Tên tỉnh cũ được quy đổi theo Nghị quyết sáp nhập.
+- Tên **mới có nhãn thắng tên cũ**: phần sau “nay là / nay thuộc” (có hoặc không có ngoặc), hoặc phần ngoài ngoặc khi
+  trong ngoặc ghi “(trước đây là …)”; tên cũ khác tên mới không coi là mâu thuẫn. Tên tỉnh cũ được quy đổi theo Nghị
+  quyết sáp nhập.
+- Tên tỉnh trùng tên xã/phường/huyện (“xã Bình Dương, tỉnh Gia Lai”, “phường Khánh Hòa, TP Cần Thơ”, “huyện Thạnh Hóa”)
+  không bị hiểu là tỉnh; có chữ “tỉnh / thành phố” đi trước thì chỉ lấy tên đó. Tên lặp lại nhiều lần chỉ tính một.
+- Ô nơi có tài sản ghi chữ mẫu (“Nơi tài sản tọa lạc”, “tại nơi có tài sản”, “Chi tiết trong Bảng kê”) coi như trống.
+- Khi ô nơi có tài sản và cụm “tọa lạc tại…” không có vị trí, dùng tên/mô tả tài sản nếu chỉ có **một** xã/phường hoặc có
+  nhãn “nay là”.
 - Các nguồn cùng thời kỳ tên gọi ghi **khác nhau**, hoặc OCR không đối chiếu được → **để trống** và đưa vào trang
   **Xác nhận vị trí** (chỉ tài sản còn hạn, hạn gần trước) với các **vị trí gợi ý**: bấm một lần là xong, hoặc gõ tay.
   Giá trị xác nhận tay luôn được ưu tiên.
