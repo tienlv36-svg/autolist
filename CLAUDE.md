@@ -51,6 +51,7 @@ Các lệnh CLI hay dùng (`auction --help` để xem đủ):
 | `history-scan -n N` | Quét lịch sử giá (phiên cũ) cho tài sản còn hạn đăng ký |
 | `docs-fetch -m PHÚT [-n N]` | Tải, lưu, đọc file đính kèm (còn hạn trước) rồi gom phiên lại |
 | `docs-reparse` | Trích lại số liệu từ chữ đã lưu (không tải lại) rồi gom phiên lại |
+| `docs-compress -m PHÚT`, `docs-prune --days N` | Nén bản scan đã lưu; dọn file gốc tài sản hết hạn quá N ngày (xoá dữ liệu – hỏi trước) |
 | `alerts` | Gửi ngay bộ lọc đã lưu + nhắc hạn vào Telegram cá nhân (gửi tin – hỏi người dùng trước) |
 | `dedupe`, `tag-types` | Tin trùng giữa 2 nguồn; loại tài sản chính thức (dgts) |
 | `stats`, `export -f xlsx` | Thống kê nhanh; xuất Excel ra `data/exports/` |
@@ -91,11 +92,14 @@ tự sửa trong `/root/autolist` (token GitHub trên VPS chỉ có quyền đ�
   khác khi trả lời.
 - **Xã/phường, tỉnh** (bộ lọc quan trọng): lấy từ ô nơi có tài sản (trừ địa chỉ ngân hàng/cơ quan), cụm “tọa lạc tại…”
   trong mô tả và file đính kèm; tên “(nay là …)” thắng tên cũ; nguồn mâu thuẫn hoặc OCR không đối chiếu được → để
-  trống, đưa vào trang **Xác nhận vị trí** (`properties.loc_candidates`), người dùng bấm chọn.
+  tự chọn nguồn ưu tiên (tài liệu chữ > ô nơi có tài sản > “tọa lạc tại…” > tên tài sản; các phiên khác nhau → phiên gần
+  nhất); không có trang duyệt tay. Các vị trí đã gặp lưu ở `properties.loc_candidates`.
 - Quy ước phiên, giá phiên 1, giá hiện tại, % giảm, quét lịch sử: `docs/QUY_UOC_GIA_PHIEN.md`.
 - Giá taisancong (OCR từ PDF) chỉ là tham khảo, không phải giá chính thức.
 - Số liệu tài sản (diện tích, tờ/thửa, kích thước) ưu tiên lấy từ file đính kèm; OCR khác tin đăng → để trống
-  (`properties.field_sources` ghi trường nào lấy từ tài liệu). **Không xoá** `data/files/`.
+  (`properties.field_sources` ghi trường nào lấy từ tài liệu). File gốc của tài sản hết hạn quá 30 ngày được **lịch tự động**
+  dọn (`docs-prune`, giữ `.txt`; trừ giỏ hàng/ưu tiên cao); tài sản hết hạn quá 30 ngày chỉ đọc lấy thông số, không giữ
+  file. Ngoài lịch đó, **không tự xoá** `data/files/` khi chưa được yêu cầu.
 
 ## An toàn – PHẢI hỏi người dùng trước khi
 

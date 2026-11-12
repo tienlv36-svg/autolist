@@ -399,18 +399,20 @@ def _location(members: list[Item], known: dict, notes: list[str]) -> tuple[str |
     srcs: dict = {}
     cands = [c for m in members for c in (m.info.loc_candidates or [])]
     # tin đăng: tên mới trước; các phiên cùng thời kỳ tên phải khớp
+    # các phiên ghi khác nhau -> lấy theo PHIÊN GẦN NHẤT (tự xác nhận, không cần duyệt tay)
+    recent = sorted(members, key=lambda m: (m.auction_date or datetime.min, m.publish_date or datetime.min.date()),
+                    reverse=True)
     pw, pnew = None, False
     for era in (True, False):
-        vals = [m.info.ward for m in members if m.info.ward and m.info.ward_new == era]
+        vals = [m for m in recent if m.info.ward and m.info.ward_new == era]
         if vals:
-            pw, pnew = (vals[0] if len({ward_key(v) for v in vals}) == 1 else None), era
-            if pw is None:
-                notes.append("Các phiên ghi xã/phường khác nhau – chờ xác nhận vị trí")
+            pw, pnew = vals[0].info.ward, era
+            if len({ward_key(m.info.ward) for m in vals}) > 1:
+                notes.append(f"Các phiên ghi xã/phường khác nhau – lấy theo phiên gần nhất ({pw})")
             break
-    provs = {m.province for m in members if m.province}
-    pp = provs.pop() if len(provs) == 1 else None
+    pp = next((m.province for m in recent if m.province), None)
     if len({m.province for m in members if m.province}) > 1:
-        notes.append("Các thông báo ghi tỉnh/thành khác nhau – chờ xác nhận vị trí")
+        notes.append(f"Các phiên ghi tỉnh/thành khác nhau – lấy theo phiên gần nhất ({pp})")
     docs = [m.doc for m in members if m.doc and not m.info.multi]
     # tỉnh từ tài liệu
     dps = {d["province"] for d in docs if d.get("province")}
@@ -424,8 +426,7 @@ def _location(members: list[Item], known: dict, notes: list[str]) -> tuple[str |
                 pp = dp
                 srcs["province"] = "tài liệu"
             else:
-                notes.append("Tài liệu (OCR) và tin đăng ghi tỉnh khác nhau – chờ xác nhận vị trí")
-                pp = None
+                notes.append(f"Tài liệu (OCR) ghi tỉnh {dp}, tin đăng ghi {pp} – dùng tin đăng")
         elif not pp:
             pp, srcs["province"] = dp, "tài liệu" if dmeth == "text" else "tài liệu (OCR)"
     # xã/phường từ tài liệu
@@ -449,8 +450,7 @@ def _location(members: list[Item], known: dict, notes: list[str]) -> tuple[str |
                     notes.append(f"Tin đăng ghi {pw}, tài liệu ghi {dw} – dùng tài liệu")
                     pw, srcs["ward"] = dw, "tài liệu"
                 else:
-                    notes.append("Tài liệu (OCR) và tin đăng ghi xã/phường khác nhau – chờ xác nhận vị trí")
-                    pw = None
+                    notes.append(f"Tài liệu (OCR) ghi {dw}, tin đăng ghi {pw} – dùng tin đăng")
     seen, uniq = set(), []
     for c in cands:
         k = (ward_key(c.get("ward")), c.get("province"))

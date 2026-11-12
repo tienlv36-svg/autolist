@@ -145,4 +145,3 @@ tr.inactive td{opacity:.55}
 .kpis4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:12px}
 .kpis4 .card{margin:0}.kpis4 .v{font-size:22px;font-weight:700;display:block}
 @media (max-width:820px){.kpis4{grid-template-columns:repeat(2,1fr)}}
-.locq .lhead{margin-bottom:4px}.locq .cands{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}.locq .cands form{margin:0}

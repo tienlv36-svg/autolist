@@ -21,7 +21,6 @@
     <a href="/tasks" class="{{ 'on' if request.url.path.startswith('/tasks') }}">Việc của tôi</a>
     <a href="/cart" class="{{ 'on' if request.url.path.startswith('/cart') }}">🛒 Giỏ hàng{% if cart_count %} <span class="cnt">{{ cart_count }}</span>{% endif %}</a>
     <a href="/searches" class="{{ 'on' if request.url.path.startswith('/searches') }}">🔔 Bộ lọc</a>
-    <a href="/locations" class="{{ 'on' if request.url.path.startswith('/locations') }}">Xác nhận vị trí{% if loc_count %} <span class="cnt">{{ loc_count }}</span>{% endif %}</a>
     <a href="/stats" class="{{ 'on' if request.url.path.startswith('/stats') }}">Thống kê</a>
     <a href="/quality" class="{{ 'on' if request.url.path.startswith('/quality') }}">Độ đầy đủ</a>
     {% if user.role == 'admin' %}<a href="/admin/users" class="{{ 'on' if request.url.path.startswith('/admin/users') }}">Tài khoản</a>

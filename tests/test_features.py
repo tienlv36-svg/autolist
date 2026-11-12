@@ -196,17 +196,17 @@ def _add(repo, sid, text, place=None, when=None, doc=None):
             s.query(NoticeRow).filter_by(source_id=sid).one().doc_info = doc
 
 
-def test_location_sources_and_confirmation(env):  # noqa: F811
+def test_location_sources_auto_confirmed(env):  # noqa: F811
     repo, c = env
     # A: ô nơi có tài sản ghi địa chỉ ngân hàng (bị loại) + mô tả "tọa lạc tại" -> lấy từ mô tả
     _add(repo, "A", LOC.format(p=1, w="xã Tân Hội, thành phố Cao Lãnh, tỉnh Đồng Tháp"),
          place="Ngân hàng Agribank, 2 Láng Hạ, Hà Nội")
-    # B: nơi có tài sản và mô tả ghi 2 xã khác nhau -> trống + ứng viên
+    # B: nơi có tài sản và mô tả ghi 2 xã khác nhau -> TỰ CHỌN theo nguồn ưu tiên (ô nơi có tài sản)
     _add(repo, "B", LOC.format(p=2, w="xã Tân Hội, tỉnh Đồng Tháp"), place="xã Tân Thuận Đông, tỉnh Đồng Tháp")
-    # C: tin không ghi xã; tài liệu OCR ghi sai 1 dấu/ký tự tên xã đã biết trong tỉnh -> chuẩn hoá
+    # C: tin không ghi xã; tài liệu OCR ghi sai dấu tên xã đã biết trong tỉnh -> chuẩn hoá
     _add(repo, "C", "Quyền sử dụng đất thửa đất số 3, tờ bản đồ số 3, diện tích 85m2, tỉnh Đồng Tháp",
          doc={"ward": "Xa Tan Hoi", "province": "Đồng Tháp", "methods": {"ward": "ocr", "province": "ocr"}})
-    # D: tài liệu OCR ghi tên xã chưa từng gặp -> không dùng, chờ xác nhận
+    # D: tài liệu OCR ghi tên xã chưa từng gặp -> không dùng (tránh tên sai chính tả)
     _add(repo, "D", "Quyền sử dụng đất thửa đất số 4, tờ bản đồ số 3, diện tích 85m2, tỉnh Đồng Tháp",
          doc={"ward": "Xã Hòa Bìnhh Thạnh", "province": "Đồng Tháp", "methods": {"ward": "ocr", "province": "ocr"}})
     rebuild(repo)
@@ -214,15 +214,9 @@ def test_location_sources_and_confirmation(env):  # noqa: F811
         get = lambda n: s.query(Property).filter(Property.parcel_no == str(n)).one()  # noqa: E731
         a, b, cc, d = get(1), get(2), get(3), get(4)
         assert (a.ward, a.province, a.address) == ("Xã Tân Hội", "Đồng Tháp", None)
-        assert b.ward is None and b.province == "Đồng Tháp" and len(b.loc_candidates) == 2
+        assert (b.ward, b.province) == ("Xã Tân Thuận Đông", "Đồng Tháp")
+        assert any("chọn Xã Tân Thuận Đông" in n for n in b.auto_notes)
         assert cc.ward == "Xã Tân Hội" and cc.field_sources.get("ward") == "tài liệu (OCR)"
-        assert d.ward is None and any(x["ward"] == "Xã Hòa Bìnhh Thạnh" for x in d.loc_candidates)
-        bid, did = b.id, d.id
+        assert d.ward is None and d.province == "Đồng Tháp"
     login(c, "nv1")
-    page = c.get("/locations").text
-    assert f"#{bid}" in page and f"#{did}" in page and "Xã Tân Thuận Đông" in page
-    tok = csrf(c, "/locations")
-    c.post(f"/p/{bid}/location", data={"csrf": tok, "ward": "Xã Tân Hội", "province": "Đồng Tháp"})
-    with repo.session() as s:
-        assert s.get(Property, bid).eff("ward") == "Xã Tân Hội"
-    assert f"#{bid}" not in c.get("/locations").text
+    assert "Xác nhận vị trí" not in c.get("/").text and c.get("/locations").status_code == 404

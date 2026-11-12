@@ -99,6 +99,7 @@ def _run_steps(settings: Settings, repo: Repository, report: dict[str, Any]) -> 
         ("re-build", lambda: rebuild(repo)),          # tài sản BĐS: gom phiên, giá, % giảm
         ("enrich-re", lambda: _enrich_re(settings, repo, int(sch.get("enrich_limit", 2000)))),  # tin BĐS cũ chưa có giá
         ("history", lambda: _history_then_rebuild(settings, repo, int(sch.get("history_limit", 500)))),
+        ("prune", lambda: _prune(settings, repo)),               # dọn file tài sản hết hạn > 30 ngày (giữ chữ đã đọc)
         ("compress", lambda: _compress(settings, repo)),         # nén bản scan đã lưu (lớn trước) – giải phóng ổ cứng
         ("docs", lambda: _docs_then_rebuild(settings, repo, float(sch.get("docs_minutes", 180)))),  # file đính kèm
         ("alerts", lambda: _alerts(settings, repo)),             # bộ lọc đã lưu + nhắc hạn (Telegram cá nhân)
@@ -133,10 +134,16 @@ def _docs_then_rebuild(settings: Settings, repo: Repository, minutes: float):
     st = fetch_docs(settings, repo, minutes=minutes, max_disk_pct=float(sch.get("docs_max_disk_pct", 85)),
                     ocr_max_pages=int(sch.get("ocr_max_pages", 8)), workers=int(sch.get("docs_workers", 0)),
                     min_days=float(sch.get("docs_min_days", 2)), max_file_mb=float(sch.get("docs_max_file_mb", 25)),
-                    text_only_expired=bool(sch.get("docs_text_only_expired", True)))
+                    text_only_expired=bool(sch.get("docs_text_only_expired", True)),
+                    keep_days=int(sch.get("docs_keep_expired_days", 30)))
     if st.notices:
         rebuild(repo)
     return st
+
+
+def _prune(settings: Settings, repo: Repository) -> tuple[int, int]:
+    from .attachments import prune_expired
+    return prune_expired(settings, repo, days=int(settings.schedule.get("docs_keep_expired_days", 30)))
 
 
 def _compress(settings: Settings, repo: Repository) -> tuple[int, int]:
@@ -296,6 +303,9 @@ def format_report(settings: Settings, repo: Repository, report: dict[str, Any]) 
                      f"đọc file {num(fl.get('docs_notices'))} tin (OCR {num(fl.get('ocr_files'))} file), "
                      f"có số liệu {num(fl.get('docs_with_info'))} tin"
                      + (f", nén file tiết kiệm {fl['compressed'] / 1e9:.1f} GB" if fl.get("compressed") else ""))
+    pr = (steps.get("prune") or {}).get("result")
+    if pr and pr[0]:
+        lines.append(f"• Dọn file tài sản hết hạn > 30 ngày: {num(pr[0])} file, {pr[1] / 1e9:.1f} GB (giữ chữ đã đọc)")
     cp = (steps.get("compress") or {}).get("result")
     if cp and cp[1]:
         lines.append(f"• Nén file đính kèm: {num(cp[0])} file, tiết kiệm {cp[1] / 1e9:.1f} GB")

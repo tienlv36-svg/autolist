@@ -345,8 +345,10 @@ def asset_location(text: str | None) -> Loc:
 
 
 def pick_location(sources: list[tuple[str, Loc]]) -> tuple[str | None, bool, str | None, list[dict]]:
-    """Chọn xã/phường + tỉnh từ nhiều nguồn (đã xếp theo độ tin cậy). Tên '(nay là …)' thắng tên cũ; các nguồn cùng
-    thời kỳ phải KHỚP nhau (bỏ dấu), không khớp -> để trống. Trả (xã, là_tên_mới, tỉnh, ứng viên để xác nhận)."""
+    """Chọn xã/phường + tỉnh từ nhiều nguồn (xếp theo độ ưu tiên: ô nơi có tài sản → cụm "tọa lạc tại…").
+    Tên mới có nhãn ("nay là …") thắng tên cũ. Các nguồn cùng thời kỳ ghi KHÁC nhau -> TỰ CHỌN nguồn ưu tiên cao nhất
+    có đúng một tên (không cần duyệt tay). Nguồn nào cũng nhiều tên (tin nhiều tài sản) -> để trống.
+    Trả (xã, là_tên_mới, tỉnh, các vị trí đã gặp)."""
     cands: list[dict] = []
     for src, loc in sources:
         for w in loc.wards or [None]:
@@ -360,9 +362,11 @@ def pick_location(sources: list[tuple[str, Loc]]) -> tuple[str | None, bool, str
         keys = {ward_key(w) for loc in vals for w in loc.wards}
         if len(keys) == 1:
             ward, ward_new = vals[0].wards[0], era
+        else:
+            ward = next((loc.ward for loc in vals if loc.ward), None)
+            ward_new = era
         break                                   # có tên mới -> không xét tên cũ (tên cũ khác tên mới là bình thường)
-    provs = {p for _, loc in sources for p in loc.provinces}
-    province = provs.pop() if len(provs) == 1 else None
+    province = next((loc.province for _, loc in sources if loc.province), None)
     seen, uniq = set(), []
     for c in cands:
         k = (ward_key(c["ward"]), c["province"])
@@ -511,10 +515,11 @@ def extract(title: str, asset_name: str | None = None, address: str | None = Non
     if pv is None and not any(l.provinces for _, l in primary):
         pv = fb.province
     info.ward, info.ward_new, info.loc_candidates = w, w_new, cands
-    if w is None and (any(l.wards for _, l in primary) or len(fb.wards) > 1):
-        info.notes.append("Các nguồn ghi xã/phường khác nhau – chờ xác nhận vị trí")
+    if len({ward_key(c["ward"]) for c in cands if c.get("ward")}) > 1:
+        info.notes.append("Tin nhắc nhiều xã/phường – " + (f"chọn {w} theo nguồn ưu tiên" if w else
+                                                          "nhiều tài sản ở nhiều nơi, để trống"))
     if pv is None and len({p for _, l in primary for p in l.provinces} | set(fb.provinces)) > 1:
-        info.notes.append("Các nguồn ghi tỉnh/thành khác nhau – chờ xác nhận vị trí")
+        info.notes.append("Tin nhắc nhiều tỉnh/thành – để trống")
     info.province = info.province_raw = pv
     return _finish(info, title, asset_name, norm)
 

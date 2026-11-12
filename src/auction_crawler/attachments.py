@@ -104,6 +104,35 @@ def compress_pdf(path: Path) -> int | None:
     return None
 
 
+def prune_expired(settings: Settings, repo: Repository, days: int = 30, now: datetime | None = None) -> tuple[int, int]:
+    """Dọn file gốc của tài sản đã HẾT HẠN đăng ký quá `days` ngày mà không ra phiên mới: xoá file, GIỮ chữ đã đọc (.txt)
+    và thông số. Trừ tài sản đang trong giỏ hàng của ai đó hoặc mức ưu tiên Cao/Rất cao. Trả (số file, số byte)."""
+    from .realestate.db import CartItem, Property, PropertyNotice
+    if days <= 0:
+        return 0, 0
+    now = now or datetime.now()
+    base = settings.path(settings.data_dir)
+    keep = select(CartItem.property_id)
+    with repo.session() as s:
+        rows = s.execute(select(NoticeFile.id, NoticeFile.path, NoticeFile.size)
+                         .join(PropertyNotice, PropertyNotice.notice_id == NoticeFile.notice_id)
+                         .join(Property, Property.id == PropertyNotice.property_id)
+                         .where(NoticeFile.path.is_not(None), NoticeFile.removed_at.is_(None),
+                                Property.registration_end < now - timedelta(days=days),
+                                Property.priority < 3, Property.id.not_in(keep))).all()
+    n = freed = 0
+    for fid, rel, size in rows:
+        f = base / rel
+        if f.exists():
+            f.unlink()
+            freed += size or 0
+            n += 1
+        with repo.Session.begin() as s:
+            s.get(NoticeFile, fid).removed_at = now
+    log.info("Dọn file tài sản hết hạn > %s ngày: %s file, %.1f GB", days, n, freed / 1e9)
+    return n, freed
+
+
 def compress_existing(settings: Settings, repo: Repository, minutes: float = 20) -> tuple[int, int]:
     """Nén dần các PDF đã lưu mà chưa nén (lớn nhất trước). Trả (số file, số byte tiết kiệm)."""
     if not gs_available() or minutes <= 0:
@@ -367,7 +396,8 @@ class _Skip(Exception):
 
 
 def process_notice(nid: int, repo: Repository, settings: Settings, fetchers: dict, stats: DocStats,
-                   ocr_max_pages: int = 8, max_bytes: int = 25 * 1048576, text_only_expired: bool = True) -> dict[str, Any]:
+                   ocr_max_pages: int = 8, max_bytes: int = 25 * 1048576, text_only_expired: bool = True,
+                   keep_days: int = 30) -> dict[str, Any]:
     base = settings.path(settings.data_dir)
     with repo.session() as s:
         n = s.get(NoticeRow, nid)
@@ -376,8 +406,8 @@ def process_notice(nid: int, repo: Repository, settings: Settings, fetchers: dic
         from .realestate.db import Property, PropertyNotice
         reg_end = s.scalar(select(Property.registration_end).join(PropertyNotice, PropertyNotice.property_id == Property.id)
                            .where(PropertyNotice.notice_id == nid))
-        # tài sản đã hết hạn (đợt lấp dữ liệu năm 2026): chỉ giữ chữ đọc được, không giữ file gốc (tiết kiệm ổ cứng)
-        text_only = text_only_expired and not (reg_end and reg_end >= datetime.now())
+        # hết hạn quá keep_days ngày (không ra phiên mới): chỉ đọc lấy thông số, không giữ file gốc
+        text_only = text_only_expired and bool(reg_end and reg_end < datetime.now() - timedelta(days=keep_days))
         fetcher = _fetcher(fetchers, settings, src_name)
         files = sorted(list_files(n, fetcher), key=lambda f: _file_rank(f[0]))
     folder = Path("files") / src_name / (pub.strftime("%Y-%m") if pub else "khac") / _safe_name(sid)
@@ -459,7 +489,7 @@ def default_workers() -> int:
 
 def fetch_docs(settings: Settings, repo: Repository, *, minutes: float = 300, limit: int = 100_000,
                max_disk_pct: float = 85, ocr_max_pages: int = 8, workers: int = 0, min_days: float = 2,
-               max_file_mb: float = 25, text_only_expired: bool = True) -> DocStats:
+               max_file_mb: float = 25, text_only_expired: bool = True, keep_days: int = 30) -> DocStats:
     """Tải + đọc file đính kèm cho các tin chưa xử lý, song song nhiều tin, trong giới hạn thời gian / ổ cứng."""
     stats = DocStats()
     deadline = time.monotonic() + minutes * 60
@@ -472,7 +502,7 @@ def fetch_docs(settings: Settings, repo: Repository, *, minutes: float = 300, li
         st = DocStats()
         try:
             process_notice(nid, repo, settings, fetchers, st, ocr_max_pages, int(max_file_mb * 1048576),
-                           text_only_expired)
+                           text_only_expired, keep_days)
         except Exception as e:  # noqa: BLE001
             st.errors += 1
             log.warning("File đính kèm tin #%s lỗi: %r", nid, e)

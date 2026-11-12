@@ -9,7 +9,8 @@
 | **Tài khoản → Telegram cá nhân** | Liên kết Telegram riêng: bấm *Liên kết Telegram* → gửi `/start <mã>` cho bot → *Kiểm tra* |
 | **⏰ Nhắc hạn** (dải vàng đầu trang Tài sản) | Tài sản trong **giỏ** hết hạn đăng ký trong 3 ngày; **việc được giao** sắp/đã quá hạn; (quản trị) tài sản ưu tiên Cao/Rất cao sắp hết hạn. Mỗi ngày gửi Telegram cá nhân 1 lần |
 | **Tự động gộp phiên** | Tin cùng tờ/thửa + diện tích hoặc cùng số GCN được gộp tự động (kể cả tên xã cũ/mới). Trang Gợi ý gộp đã bỏ |
-| **Xác nhận vị trí** | Xã/phường, tỉnh đọc từ tin đăng + file đính kèm; nguồn mâu thuẫn → trang này, bấm vị trí gợi ý (1 chạm) |
+| **Vị trí tự xác nhận** | Xã/phường, tỉnh đọc từ tin đăng + file đính kèm; nguồn khác nhau → tự chọn nguồn ưu tiên (không duyệt tay) |
+| **Ổ cứng** | Nén bản scan; dọn file tài sản hết hạn > 30 ngày (giữ chữ đã đọc) |
 | **Lịch mới** | Quét tin mới **2:00** mỗi ngày; các giờ còn lại (0:10, 6:10–22:10 mỗi 2 giờ) **lấp dữ liệu còn thiếu**: giá, file đính kèm của tin gần nhất – còn hạn trước, rồi tài sản năm 2026 |
 | **Độ đầy đủ** | % tài sản còn hạn đã có giá, diện tích, tờ/thửa, xã/phường…; nút *Xem danh sách thiếu* để nhập tay bổ sung. Bộ lọc mới **“Còn thiếu dữ liệu”** ở trang Tài sản |
 | **Thống kê** | Tài sản mới theo tuần, theo tỉnh, theo loại chủ tài sản; mức giảm trung bình |

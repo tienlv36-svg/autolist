@@ -26,7 +26,8 @@ schedule:                        # dùng với lệnh `auction schedule`
   ocr_limit: 0                   # >0: mỗi lượt OCR giá từ PDF cho N tin taisancong (cần tesseract)
   docs_minutes: 180              # lượt chính 2:00: đọc file đính kèm tối đa N phút (0 = tắt); còn lại để lượt lấp dữ liệu
   docs_max_file_mb: 25           # file đính kèm lớn hơn N MB: không tải, chỉ lưu đường link tới file gốc
-  docs_text_only_expired: true   # tài sản đã hết hạn (lấp dữ liệu năm 2026): chỉ giữ chữ đọc được, không giữ file gốc
+  docs_text_only_expired: true   # tài sản hết hạn quá docs_keep_expired_days: chỉ đọc lấy thông số, không giữ file gốc
+  docs_keep_expired_days: 30     # dọn file gốc của tài sản hết hạn quá N ngày (giữ chữ đã đọc; trừ giỏ hàng, ưu tiên cao)
   docs_compress_minutes: 30      # mỗi lượt nén dần bản scan PDF đã lưu tối đa N phút (cần ghostscript)
   docs_max_disk_pct: 85          # ổ cứng đã dùng >= N% -> dừng tải file đính kèm, báo Telegram
   ocr_max_pages: 8               # OCR tối đa N trang mỗi file scan (dừng sớm khi đã qua đoạn mô tả tài sản)

@@ -36,7 +36,7 @@ Bản mới gồm: bộ lọc đã lưu + Telegram cá nhân, nhắc hạn, gợ
 3. Khi app hiện **Allow / Cho phép** cho lệnh sao lưu, `git pull`, `install-vps.sh` → bấm cho phép.
 
 **Đúng khi:** Claude báo cập nhật xong, 4 dịch vụ `active`. Mở https://hangdg.com thấy menu: *Tài sản · Việc của tôi ·
-🛒 Giỏ hàng · 🔔 Bộ lọc · Xác nhận vị trí · Thống kê · Độ đầy đủ*.
+🛒 Giỏ hàng · 🔔 Bộ lọc · Thống kê · Độ đầy đủ*.
 
 > Không dùng được app? Làm qua SSH:
 > ```bash
@@ -218,7 +218,7 @@ Rồi chụp gửi **phiên phát triển** (phiên này) để tinh chỉnh đ�
 1. Trang **Độ đầy đủ**.
 2. Trang **Hệ thống**.
 3. 2–3 tài sản còn hạn có mục *File đính kèm đã lưu* (bấm **xem chữ** ở một file scan để thấy chất lượng OCR).
-4. Vài tài sản bị **gộp phiên sai** (nếu có) và trang **Xác nhận vị trí**.
+4. Vài tài sản bị **gộp phiên sai** hoặc **sai xã/phường** (nếu có).
 
 ---
 
@@ -230,7 +230,7 @@ Rồi chụp gửi **phiên phát triển** (phiên này) để tinh chỉnh đ�
 | Theo dõi tài sản quan tâm | **＋ Giỏ** trên thẻ tài sản; xem ở **🛒 Giỏ hàng**; nhắc hạn tự động |
 | Nhận tin tài sản mới theo tiêu chí | **💾 Lưu bộ lọc** (Bước 3) |
 | Hai thẻ là cùng một BĐS | Phần mềm tự gộp khi đủ căn cứ; còn sót thì trong trang tài sản nhập số `#id` vào ô *Gộp vào #* |
-| Xã/phường, tỉnh còn trống | Menu **Xác nhận vị trí** → bấm vị trí gợi ý (1 chạm) |
+| Xã/phường, tỉnh sai/trống | Phần mềm tự chọn theo nguồn ưu tiên; sai thì sửa trong trang tài sản → **Sửa thông tin** |
 | Bổ sung số liệu còn thiếu | **Độ đầy đủ** → *Xem danh sách thiếu* → mở tài sản → **Sửa thông tin** |
 | Xem xu hướng | **Thống kê** (tài sản mới theo tuần, theo tỉnh, theo chủ tài sản); biểu đồ giá trong từng tài sản |
 | Hỏi tình hình hệ thống | App Claude → **VPS hangdg** |

@@ -126,41 +126,6 @@ def register(app, repo, settings, render, back, log_act) -> None:
             user = current_user(request, s)
             return render(request, "reminders.html", user, r=reminders(s, user, datetime.now()), now=datetime.now())
 
-    # ------------------------------------------------------------------ xác nhận vị trí (xã/phường, tỉnh)
-    def _loc_missing(now):
-        from .queries import eff
-        return [Property.registration_end >= now, (eff("ward").is_(None)) | (eff("province").is_(None))]
-
-    @app.get("/locations", response_class=HTMLResponse)
-    def locations(request: Request, page: int = 1):
-        now = datetime.now()
-        with repo.session() as s:
-            user = current_user(request, s)
-            cond = _loc_missing(now)
-            total = s.scalar(select(func.count(Property.id)).where(*cond)) or 0
-            items = s.scalars(select(Property).where(*cond).order_by(Property.registration_end)
-                              .offset((max(page, 1) - 1) * 50).limit(50)).all()
-            return render(request, "locations.html", user, items=items, total=total, page=max(page, 1),
-                          pages=max(1, -(-total // 50)), now=now)
-
-    @app.post("/p/{pid}/location")
-    def set_location(request: Request, pid: int, csrf: str = Form(""), ward: str = Form(""), province: str = Form("")):
-        check_csrf(request, csrf)
-        with repo.Session.begin() as s:
-            user = current_user(request, s)
-            p = s.get(Property, pid)
-            if not p:
-                raise HTTPException(404)
-            ward, province = ward.strip()[:128], province.strip()[:64]
-            if ward:
-                p.ward_manual = ward
-            if province:
-                p.province_manual = province
-            if ward or province:
-                log_act(s, pid, user, "location", f"Xác nhận vị trí: {ward or p.eff('ward') or '—'}, "
-                                                  f"{province or p.eff('province') or '—'}")
-        return back(request.headers.get("referer") or "/locations")
-
     # ------------------------------------------------------------------ thống kê
     @app.get("/stats", response_class=HTMLResponse)
     def stats_page(request: Request):

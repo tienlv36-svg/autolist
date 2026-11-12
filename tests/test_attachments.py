@@ -248,3 +248,32 @@ def test_too_big_file_keeps_link_only(env, monkeypatch):
     with repo.session() as ss:
         f = ss.query(NoticeFile).first()
         assert f.path is None and f.method == "too_big" and "chỉ lưu đường link" in f.error
+
+
+def test_prune_expired_keeps_text_cart_and_priority(env):
+    from auction_crawler.attachments import prune_expired
+    from auction_crawler.realestate.db import CartItem, User
+    s, repo = env
+    base = s.path(s.data_dir)
+    with repo.Session.begin() as ss:
+        u = User(username="u", full_name="U", password_hash="x")
+        ss.add(u)
+        ss.flush()
+        rows = []
+        for sid in ("11", "12"):
+            nid = ss.query(NoticeRow).filter_by(source_id=sid).one().id
+            rel = f"files/dgts/x/{sid}/tb.pdf"
+            (base / rel).parent.mkdir(parents=True, exist_ok=True)
+            (base / rel).write_bytes(b"%PDF" + b"0" * 100)
+            (base / (rel + ".txt")).write_text("chữ")
+            ss.add(NoticeFile(notice_id=nid, filename="tb.pdf", url=f"u{sid}", path=rel, size=104))
+            rows.append(rel)
+    later = datetime.now() + timedelta(days=60)          # 60 ngày sau: cả 2 tài sản đã hết hạn > 30 ngày
+    with repo.Session.begin() as ss:                     # tài sản của tin 12 đang trong giỏ -> giữ
+        pid12 = ss.query(Property).filter(Property.title.contains("lô 12")).one().id
+        ss.add(CartItem(user_id=u.id, property_id=pid12))
+    n, freed = prune_expired(s, repo, days=30, now=later)
+    assert n == 1 and freed == 104
+    assert not (base / rows[0]).exists() and (base / (rows[0] + ".txt")).exists()   # còn giữ chữ
+    assert (base / rows[1]).exists()                                                # trong giỏ: giữ file
+    assert prune_expired(s, repo, days=30) == (0, 0)                                # hôm nay: chưa quá 30 ngày

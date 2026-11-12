@@ -92,6 +92,10 @@ ngày**; (3) còn hạn < 2 ngày — trong mỗi nhóm, tài sản đang **thi�
 đã xong tài sản còn hạn: tài sản **năm 2026 đã hết hạn còn thiếu thông tin**, kết thúc gần đây trước. Ổ cứng dùng ≥ 85%
 thì dừng tải và báo Telegram.
 
+**Lưu trữ:** PDF scan > 1,5 MB được nén (150 dpi); file > 25 MB không tải (giữ link nguồn). Tài sản **hết hạn quá 30
+ngày** mà không ra phiên mới: file gốc được **tự dọn** mỗi đêm, giữ chữ đã đọc và thông số (trừ tài sản trong giỏ hàng
+hoặc ưu tiên Cao/Rất cao); tài sản như vậy khi lấp dữ liệu chỉ **đọc lấy thông số, không giữ file**.
+
 **Trích thông số** (tổng DT đất, đất ở, đất khác, DT sàn, chiều ngang/dài, số tờ, số thửa) chỉ từ **đoạn mô tả tài
 sản** của file (“Tên tài sản…”, “Tài sản đấu giá…” đến trước “Giá khởi điểm”), theo đúng quy tắc thận trọng: có nhãn
 rõ và chỉ một giá trị; file nhiều thửa/lô → không lấy.
@@ -124,9 +128,10 @@ rõ và chỉ một giá trị; file nhiều thửa/lô → không lấy.
 - Ô nơi có tài sản ghi chữ mẫu (“Nơi tài sản tọa lạc”, “tại nơi có tài sản”, “Chi tiết trong Bảng kê”) coi như trống.
 - Khi ô nơi có tài sản và cụm “tọa lạc tại…” không có vị trí, dùng tên/mô tả tài sản nếu chỉ có **một** xã/phường hoặc có
   nhãn “nay là”.
-- Các nguồn cùng thời kỳ tên gọi ghi **khác nhau**, hoặc OCR không đối chiếu được → **để trống** và đưa vào trang
-  **Xác nhận vị trí** (chỉ tài sản còn hạn, hạn gần trước) với các **vị trí gợi ý**: bấm một lần là xong, hoặc gõ tay.
-  Giá trị xác nhận tay luôn được ưu tiên.
+- Các nguồn ghi **khác nhau** → **tự chọn** (không duyệt tay) theo thứ tự ưu tiên: tài liệu đọc chữ > ô nơi có tài
+  sản > cụm “tọa lạc tại…” > tên tài sản; OCR chỉ dùng khi tin đăng không ghi và tên đối chiếu được; các phiên ghi khác
+  nhau → lấy theo **phiên gần nhất**. Ghi chú lý do chọn ở trang chi tiết. Tin nhiều tài sản ở nhiều nơi → để trống.
+  Có thể sửa tay trong trang chi tiết (giá trị nhập tay luôn ưu tiên).
 
 ## 7. Gộp phiên tự động
 
