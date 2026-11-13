@@ -309,3 +309,16 @@ def test_fetcher_marks_source_down(env):
         f.request("GET", "https://dgts.moj.gov.vn/x")
     with pytest.raises(SourceDown):                              # sau đó dừng hẳn, không gọi thêm
         f.request("GET", "https://dgts.moj.gov.vn/x")
+
+
+def test_requeue_old_outage_failures(env):
+    from auction_crawler.attachments import requeue_outages
+    s, repo = env
+    with repo.Session.begin() as ss:
+        a, b = ss.query(NoticeRow).limit(2).all()
+        a.docs_at, a.doc_info = datetime.now(), {"tries": 3, "error": "HTTPStatusError('Server error 503 Service Unavailable')"}
+        b.docs_at, b.doc_info = datetime.now(), {"tries": 3, "error": "HTTPStatusError('Client error 404 Not Found')"}
+        aid, bid = a.id, b.id
+    assert requeue_outages(repo) == 1
+    with repo.session() as ss:
+        assert ss.get(NoticeRow, aid).docs_at is None and ss.get(NoticeRow, bid).docs_at is not None

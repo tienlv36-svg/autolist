@@ -484,6 +484,24 @@ def _open_latest():
     return select(Property.latest_notice_id).where(Property.registration_end >= datetime.now())
 
 
+_OUTAGE_TXT = re.compile(r"\b5\d\d\b|429|ConnectError|ConnectTimeout|ReadTimeout|RemoteProtocolError|SourceDown|"
+                         r"không truy cập được", re.I)
+
+
+def requeue_outages(repo: Repository) -> int:
+    """Tin bị bỏ qua sau 3 lần lỗi mà lỗi là do nguồn sập/bảo trì (trước khi có nhận diện bảo trì) -> xếp đọc lại."""
+    n = 0
+    with repo.Session.begin() as s:
+        for row in s.scalars(select(NoticeRow).where(NoticeRow.docs_at.is_not(None),
+                                                     func.json_extract(NoticeRow.doc_info, "$.tries").is_not(None))):
+            if _OUTAGE_TXT.search(str((row.doc_info or {}).get("error", ""))):
+                row.docs_at, row.doc_info = None, None
+                n += 1
+    if n:
+        log.info("Xếp đọc lại %s tin từng lỗi do nguồn bảo trì/sập", n)
+    return n
+
+
 def default_workers() -> int:
     """Số tin xử lý song song = số nhân CPU (tối thiểu 2: còn chờ mạng khi tải file). OCR chạy với độ ưu tiên thấp
     (nice), nên web vẫn được ưu tiên CPU."""
@@ -497,6 +515,7 @@ def fetch_docs(settings: Settings, repo: Repository, *, minutes: float = 300, li
     stats = DocStats()
     deadline = time.monotonic() + minutes * 60
     workers = workers or default_workers()
+    requeue_outages(repo)
     with repo.session() as s:
         ids = due_notices(s, limit, min_days)
     fetchers: dict = {}
