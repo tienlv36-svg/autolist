@@ -152,7 +152,13 @@ def _prune(settings: Settings, repo: Repository) -> tuple[int, int]:
 
 def _compress(settings: Settings, repo: Repository) -> tuple[int, int]:
     from .attachments import compress_existing
-    return compress_existing(settings, repo, minutes=float(settings.schedule.get("docs_compress_minutes", 30)))
+    minutes = float(settings.schedule.get("docs_compress_minutes", 30))
+    try:
+        if disk_usage_pct(settings.path("data")) >= 80:
+            minutes *= 3                               # ổ gần đầy: nén lâu hơn trước khi tải tiếp
+    except OSError:
+        pass
+    return compress_existing(settings, repo, minutes=minutes)
 
 
 def _enrich_re(settings: Settings, repo: Repository, limit: int) -> int:

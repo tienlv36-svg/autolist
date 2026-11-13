@@ -61,6 +61,7 @@ class NoticeFile(Base):
     fetched_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
     info: Mapped[dict[str, Any] | None] = mapped_column(JSON)   # thông số trích từ file này
     orig_size: Mapped[int | None] = mapped_column(Integer)      # dung lượng gốc trước khi nén (đã nén -> có giá trị)
+    compress_level: Mapped[int | None] = mapped_column(Integer)  # 2 = đã nén mạnh (xám 130 dpi)
     removed_at: Mapped[datetime | None] = mapped_column(DateTime)   # chỉ giữ chữ (.txt), bỏ file gốc (tài sản đã hết hạn)
 
 
@@ -85,17 +86,23 @@ def gs_available() -> bool:
     return bool(shutil.which("gs"))
 
 
-def compress_pdf(path: Path) -> int | None:
-    """Nén PDF (chủ yếu bản scan) bằng Ghostscript, ảnh 150 dpi – vẫn đọc rõ. Thay file gốc khi nhỏ hơn ≥ 20%.
+GS_STRONG = ["-sColorConversionStrategy=Gray", "-dProcessColorModel=/DeviceGray", "-dDownsampleGrayImages=true",
+             "-dGrayImageResolution=130", "-dDownsampleColorImages=true", "-dColorImageResolution=130",
+             "-dGrayImageDownsampleType=/Bicubic", "-dPassThroughJPEGImages=false", "-dJPEGQ=50"]
+
+
+def compress_pdf(path: Path, strong: bool = True, min_size: int = COMPRESS_MIN) -> int | None:
+    """Nén PDF (chủ yếu bản scan) bằng Ghostscript. strong: ảnh xám 130 dpi (đọc rõ trên màn hình; chữ đã được đọc
+    và lưu riêng trước khi nén) – nhỏ hơn bản 150 dpi màu khoảng 2 lần. Thay file khi nhỏ hơn ≥ 15%.
     Trả dung lượng mới, hoặc None nếu không nén."""
-    if path.suffix.lower() != ".pdf" or not gs_available() or not path.exists() or path.stat().st_size < COMPRESS_MIN:
+    if path.suffix.lower() != ".pdf" or not gs_available() or not path.exists() or path.stat().st_size < min_size:
         return None
     tmp = path.with_name(path.name + ".gs.pdf")
     try:
         r = subprocess.run(["nice", "-n", "10", "gs", "-q", "-dNOPAUSE", "-dBATCH", "-dSAFER", "-sDEVICE=pdfwrite",
-                            "-dPDFSETTINGS=/ebook", "-dCompatibilityLevel=1.5", f"-sOutputFile={tmp}", str(path)],
-                           capture_output=True, timeout=600)
-        if r.returncode == 0 and tmp.exists() and 0 < tmp.stat().st_size < path.stat().st_size * 0.8:
+                            "-dPDFSETTINGS=/ebook", *(GS_STRONG if strong else []), "-dCompatibilityLevel=1.5",
+                            f"-sOutputFile={tmp}", str(path)], capture_output=True, timeout=600)
+        if r.returncode == 0 and tmp.exists() and 0 < tmp.stat().st_size < path.stat().st_size * 0.85:
             tmp.replace(path)
             return path.stat().st_size
     except Exception as e:  # noqa: BLE001
@@ -135,7 +142,8 @@ def prune_expired(settings: Settings, repo: Repository, days: int = 30, now: dat
 
 
 def compress_existing(settings: Settings, repo: Repository, minutes: float = 20) -> tuple[int, int]:
-    """Nén dần các PDF đã lưu mà chưa nén (lớn nhất trước). Trả (số file, số byte tiết kiệm)."""
+    """Nén dần các PDF đã lưu (lớn nhất trước): file chưa nén, và file đã nén kiểu cũ (màu 150 dpi) còn > 500 KB
+    được nén lại kiểu mạnh (xám 130 dpi). Trả (số file, số byte tiết kiệm)."""
     if not gs_available() or minutes <= 0:
         return 0, 0
     base = settings.path(settings.data_dir)
@@ -143,18 +151,20 @@ def compress_existing(settings: Settings, repo: Repository, minutes: float = 20)
     n = saved = 0
     with repo.session() as s:
         rows = s.execute(select(NoticeFile.id, NoticeFile.path, NoticeFile.size)
-                         .where(NoticeFile.path.is_not(None), NoticeFile.orig_size.is_(None),
-                                NoticeFile.removed_at.is_(None), NoticeFile.size >= COMPRESS_MIN)
+                         .where(NoticeFile.path.is_not(None), NoticeFile.removed_at.is_(None),
+                                func.coalesce(NoticeFile.compress_level, 0) < 2,
+                                NoticeFile.size >= 500_000)
                          .order_by(NoticeFile.size.desc())).all()
     for fid, rel, size in rows:
         if time.monotonic() > deadline:
             break
         if not rel.lower().endswith(".pdf"):
             continue
-        new = compress_pdf(base / rel)
+        new = compress_pdf(base / rel, strong=True, min_size=500_000)
         with repo.Session.begin() as s:
             nf = s.get(NoticeFile, fid)
-            nf.orig_size = size                       # đánh dấu đã thử nén (kể cả không nhỏ hơn)
+            nf.orig_size = nf.orig_size or size
+            nf.compress_level = 2                     # đã thử nén mạnh (kể cả không nhỏ hơn)
             if new:
                 nf.size = new
                 saved += size - new
@@ -457,6 +467,8 @@ def process_notice(nid: int, repo: Repository, settings: Settings, fetchers: dic
                 if not text_only and nf.orig_size is None and (new := compress_pdf(p)):
                     nf.orig_size, nf.size = nf.size, new
                     stats.saved += (nf.orig_size or 0) - new
+                if not text_only:
+                    nf.compress_level = 2
                 if text_only and method not in ("deferred", "unsupported"):
                     p.unlink(missing_ok=True)             # tài sản đã hết hạn: chỉ giữ chữ đã đọc
                     nf.removed_at = datetime.now()
