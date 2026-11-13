@@ -277,3 +277,35 @@ def test_prune_expired_keeps_text_cart_and_priority(env):
     assert not (base / rows[0]).exists() and (base / (rows[0] + ".txt")).exists()   # còn giữ chữ
     assert (base / rows[1]).exists()                                                # trong giỏ: giữ file
     assert prune_expired(s, repo, days=30) == (0, 0)                                # hôm nay: chưa quá 30 ngày
+
+
+def test_source_maintenance_does_not_mark_notices_failed(env, monkeypatch):
+    """dgts bảo trì (503): dừng lượt, không tính lỗi cho tin, lượt sau đọc lại bình thường."""
+    s, repo = env
+    s.http.max_retries = 1
+    from auction_crawler import pipeline
+    orig = pipeline.make_fetcher
+    down = httpx.MockTransport(lambda r: httpx.Response(503, text="Hệ thống đang được bảo trì"))
+    monkeypatch.setattr(pipeline, "make_fetcher", lambda st, src, transport=None: orig(st, src, down))
+    st = fetch_docs(s, repo, minutes=5, workers=1)
+    assert st.errors == 0 and st.notices == 0
+    with repo.session() as ss:
+        assert all(n.docs_at is None and not (n.doc_info or {}).get("tries") for n in ss.query(NoticeRow))
+    calls: list[str] = []
+    monkeypatch.setattr(pipeline, "make_fetcher", lambda st, src, transport=None: orig(st, src, mock(calls)))
+    assert fetch_docs(s, repo, minutes=5).notices == 2          # nguồn hoạt động lại -> đọc đủ
+
+
+def test_fetcher_marks_source_down(env):
+    from auction_crawler.http_client import Fetcher, SourceDown
+    s, _ = env
+    s.http.max_retries = 1
+    s.http.delay_seconds = 0
+    f = Fetcher(s, "dgts", transport=httpx.MockTransport(lambda r: httpx.Response(503)))
+    for _ in range(3):
+        with pytest.raises(httpx.HTTPStatusError):
+            f.request("GET", "https://dgts.moj.gov.vn/x")
+    with pytest.raises(SourceDown):
+        f.request("GET", "https://dgts.moj.gov.vn/x")
+    with pytest.raises(SourceDown):                              # sau đó dừng hẳn, không gọi thêm
+        f.request("GET", "https://dgts.moj.gov.vn/x")

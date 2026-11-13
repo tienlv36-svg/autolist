@@ -17,6 +17,18 @@ from .config import Settings
 log = logging.getLogger(__name__)
 
 RETRYABLE = (httpx.TransportError, httpx.HTTPStatusError)
+DOWN_AFTER = 4          # số request liên tiếp thất bại (sau khi đã thử lại) -> coi nguồn đang sập/bảo trì
+
+
+class SourceDown(RuntimeError):
+    """Website nguồn tạm không truy cập được (bảo trì, lỗi 5xx, mất kết nối) – dừng lượt, thử lại lượt sau."""
+
+
+def is_outage(e: BaseException) -> bool:
+    """Lỗi do nguồn sập/mạng (không phải do dữ liệu) -> không tính vào số lần lỗi của từng tin."""
+    if isinstance(e, (SourceDown, httpx.TransportError)):
+        return True
+    return isinstance(e, httpx.HTTPStatusError) and (e.response.status_code >= 500 or e.response.status_code == 429)
 
 
 class Fetcher:
@@ -30,6 +42,8 @@ class Fetcher:
         self.source = source
         self._last = 0.0
         self._lock = threading.Lock()
+        self._fails = 0
+        self.down = False
         self.client = httpx.Client(
             timeout=self.http.timeout,
             verify=self.http.verify_tls,
@@ -70,7 +84,21 @@ class Fetcher:
                 r.raise_for_status()
             return r
 
-        r = _do()
+        if self.down:
+            raise SourceDown(f"{self.source}: website nguồn tạm không truy cập được")
+        try:
+            r = _do()
+        except RETRYABLE as e:
+            with self._lock:
+                self._fails += 1
+                if self._fails >= DOWN_AFTER:
+                    self.down = True
+            if self.down:
+                log.warning("[%s] %s request liên tiếp thất bại – coi như nguồn đang bảo trì/sập", self.source,
+                            self._fails)
+                raise SourceDown(f"{self.source}: website nguồn tạm không truy cập được ({e!r})"[:300]) from e
+            raise
+        self._fails = 0
         log.debug("%s %s -> %s", method, r.url, r.status_code)
         return r
 

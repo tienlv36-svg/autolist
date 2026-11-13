@@ -31,6 +31,7 @@ from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, Text, Unique
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .config import Settings
+from .http_client import is_outage
 from .normalize import strip_accents
 from .realestate.extract import RealEstateInfo, _one, asset_location, extract, ward_key
 from .storage import Base, NoticeRow, Repository
@@ -439,6 +440,8 @@ def process_notice(nid: int, repo: Repository, settings: Settings, fetchers: dic
             except _Skip:
                 pass
             except Exception as e:  # noqa: BLE001
+                if is_outage(e):
+                    raise                                 # nguồn sập/bảo trì: bỏ dở tin này, lượt sau đọc lại
                 nf.error = repr(e)[:300]
                 stats.errors += 1
         if nf.path and nf.method in (None, "deferred") and not nf.removed_at:
@@ -504,6 +507,9 @@ def fetch_docs(settings: Settings, repo: Repository, *, minutes: float = 300, li
             process_notice(nid, repo, settings, fetchers, st, ocr_max_pages, int(max_file_mb * 1048576),
                            text_only_expired, keep_days)
         except Exception as e:  # noqa: BLE001
+            if is_outage(e):                         # website nguồn sập/bảo trì: không tính lỗi cho tin, dừng lượt
+                outage.append(repr(e)[:200])
+                return st
             st.errors += 1
             log.warning("File đính kèm tin #%s lỗi: %r", nid, e)
             with repo.Session.begin() as s:          # lỗi 3 lần liên tiếp -> tạm bỏ qua (đọc lại khi tin cập nhật)
@@ -519,12 +525,15 @@ def fetch_docs(settings: Settings, repo: Repository, *, minutes: float = 300, li
             setattr(stats, k, getattr(stats, k) + getattr(st, k))
 
     todo = list(ids)
+    outage: list[str] = []
     try:
         with ThreadPoolExecutor(max_workers=workers) as pool:
             running: set = set()
             while todo or running:
                 while todo and len(running) < workers and not stats.stopped:
-                    if time.monotonic() > deadline:
+                    if len(outage) >= 3:
+                        stats.stopped = "website nguồn tạm không truy cập được (bảo trì?) – đọc tiếp ở lượt sau"
+                    elif time.monotonic() > deadline:
                         stats.stopped = "hết thời gian của lượt – đọc tiếp ở lượt sau"
                     elif _disk_pct(settings.path(settings.data_dir)) >= max_disk_pct:
                         stats.stopped = f"ổ cứng đã dùng ≥ {max_disk_pct:.0f}% – dừng tải file"

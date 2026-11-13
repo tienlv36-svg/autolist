@@ -13,7 +13,7 @@ from sqlalchemy import select
 
 from .classifier import RuleClassifier
 from .config import Settings
-from .http_client import BrowserFetcher, Fetcher
+from .http_client import SourceDown, BrowserFetcher, Fetcher
 from .models import AssetItem, AuctionNotice
 from .normalize import clean_text, detect_province, parse_date, parse_datetime, parse_vnd
 from .sources import get_source
@@ -162,6 +162,9 @@ def crawl_source(name: str, settings: Settings, repo: Repository, *, max_pages: 
                     and known and len(known) == len(items)):
                 log.info("[%s] trang %s toàn tin đã có -> dừng (chạy tăng dần)", name, page)
                 break
+    except SourceDown as e:
+        status, message = "down", str(e)
+        log.warning("[%s] nguồn tạm không truy cập được – dừng, thử lại lượt sau", name)
     except Exception as e:  # noqa: BLE001
         status, message = "failed", repr(e)
         log.exception("[%s] crawl thất bại", name)
@@ -170,6 +173,8 @@ def crawl_source(name: str, settings: Settings, repo: Repository, *, max_pages: 
         repo.finish_run(run_id, pages=stats.pages, found=stats.found, inserted=stats.inserted,
                         updated=stats.updated, errors=stats.errors, status=status,
                         message=message or "\n".join(stats.error_samples) or None)
+    if status == "down":
+        raise SourceDown(message)
     if status == "failed":
         raise RuntimeError(message)
     return stats

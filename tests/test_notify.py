@@ -146,3 +146,14 @@ def test_fill_runs_outside_main_and_reports_in_main(settings, monkeypatch):
     txt = scheduler.format_report(settings, repo, rep)
     assert "Lấp dữ liệu trong ngày (1 lượt): bổ sung giá 7 tin, đọc file 12 tin (OCR 9 file), có số liệu 5 tin" in txt
     assert scheduler._pop_fill_stats(settings) is None          # đã cộng vào báo cáo -> xoá
+
+
+def test_report_source_down_is_warning(settings):
+    repo = Repository(settings.db_url)
+    repo.init_db()
+    rep = {"started": datetime(2026, 11, 13, 2, 0), "minutes": 5, "steps": {},
+           "warnings": ["dgts: website nguồn tạm không truy cập được (bảo trì?) – lượt sau tự lấy bù"],
+           "sources": {"dgts": {"ok": False, "down": True, "error": "503"},
+                       "taisancong": {"ok": True, "found": 20, "inserted": 3, "updated": 0, "errors": 0}}}
+    txt = scheduler.format_report(settings, repo, rep)
+    assert txt.startswith("⚠️") and "dgts: tạm không truy cập được" in txt and "THẤT BẠI" not in txt

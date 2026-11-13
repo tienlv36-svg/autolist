@@ -13,6 +13,7 @@ from apscheduler.triggers.cron import CronTrigger
 
 from .config import DEFAULT_CRON, DEFAULT_FILL_CRON, Settings
 from .notify import disk_usage_pct, esc, send
+from .http_client import SourceDown
 from .pipeline import crawl_source
 from .sources import all_sources
 from .storage import Repository
@@ -87,6 +88,9 @@ def _run_steps(settings: Settings, repo: Repository, report: dict[str, Any]) -> 
             log.info("[%s] xong: mới=%s cập nhật=%s lỗi=%s", name, st.inserted, st.updated, st.errors)
             if st.found == 0:
                 report["warnings"].append(f"{name}: không đọc được tin nào – website có thể đã đổi cấu trúc")
+        except SourceDown as e:
+            report["sources"][name] = {"ok": False, "down": True, "error": str(e)[:300]}
+            report["warnings"].append(f"{name}: website nguồn tạm không truy cập được (bảo trì?) – lượt sau tự lấy bù")
         except Exception as e:  # noqa: BLE001
             log.exception("[%s] lỗi", name)
             report["sources"][name] = {"ok": False, "error": repr(e)[:300]}
@@ -264,7 +268,8 @@ def format_report(settings: Settings, repo: Repository, report: dict[str, Any]) 
     from .realestate.db import Property
 
     srcs, steps, warns = report["sources"], report["steps"], list(report["warnings"])
-    failed = [n for n, s in srcs.items() if not s.get("ok")] + [n for n, s in steps.items() if not s.get("ok")]
+    failed = [n for n, s in srcs.items() if not s.get("ok") and not s.get("down")] + \
+        [n for n, s in steps.items() if not s.get("ok")]
     try:
         pct = disk_usage_pct(settings.path("data"))
         if pct >= DISK_WARN_PCT:
@@ -277,6 +282,8 @@ def format_report(settings: Settings, repo: Repository, report: dict[str, Any]) 
         if s.get("ok"):
             lines.append(f"• {esc(n)}: <b>{num(s['inserted'])}</b> tin mới, {num(s['updated'])} cập nhật"
                          + (f", {s['errors']} lỗi" if s["errors"] else ""))
+        elif s.get("down"):
+            lines.append(f"• {esc(n)}: tạm không truy cập được – lượt sau lấy bù")
         else:
             lines.append(f"• {esc(n)}: <b>THẤT BẠI</b> – {esc(s.get('error'))}")
     for n, s in steps.items():
