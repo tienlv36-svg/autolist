@@ -68,3 +68,25 @@ def test_multi_asset_stays_blank():
 def test_placeholder_place_rejected(place):
     assert place_rejection(place) is not None
     assert place_rejection("Nơi tài sản tọa lạc: thôn 3, xã Bản Lầu, tỉnh Lào Cai") is None
+
+
+CASES2 = [
+    ("8855", "Quyền sử dụng đất 2 thửa", "Thửa 296, TBĐ 20 – ĐC: 66A Đồng Nai, P.Nam Nha Trang, T. Khánh Hoà | Thửa 158, "
+     "TBĐ 21 – ĐC: 39R Đồng Nai, P.Nam Nha Trang, T.Khánh Hòa", "Phường Nam Nha Trang", "Khánh Hòa"),
+    ("42049", "Quyền sử dụng đất nông nghiệp", "Thôn Ta Ly, xã Ka Đô (đất nông nghiệp đối diện đường vào hồ Ka Zam)",
+     "Xã Ka Đô", None),
+    ("10124", "Quyền sử dụng đất thửa 12 và thửa 13, cùng địa chỉ: Phường 3 Bảo Lộc, tỉnh Lâm Đồng",
+     "Phường 3 Bảo Lộc, tỉnh Lâm Đồng", "Phường 3 Bảo Lộc", "Lâm Đồng"),
+    ("3385-tinh", "Căn hộ tại phường Tam Thắng, TPHCM và căn nhà tại P. Vũng Tàu, TPHCM",
+     "Phòng THADS khu vực 11 – TP.Hồ Chí Minh", None, "TP. Hồ Chí Minh"),
+    ("42165", "Quyền sử dụng đất tại xã Hợp Lý, huyện Lý Nhân (nay là xã Lý Nhân, tỉnh Ninh Bình)",
+     "thửa 5, thuộc địa giới hành chính xã Lý Nhân, tỉnh Ninh Bình (địa phận xã Hợp Lý cũ)", "Xã Lý Nhân", "Ninh Bình"),
+]
+
+
+@pytest.mark.parametrize("name,asset,place,ward,province", CASES2, ids=[c[0] for c in CASES2])
+def test_location_samples_2(name, asset, place, ward, province):
+    if place and place_rejection(place, "Chi cục THADS"):
+        place = None
+    info = extract(asset[:200], asset, place)
+    assert (info.ward, info.province) == (ward, province), info.notes

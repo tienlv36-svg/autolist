@@ -112,24 +112,33 @@ def compress_pdf(path: Path, strong: bool = True, min_size: int = COMPRESS_MIN) 
     return None
 
 
-def prune_expired(settings: Settings, repo: Repository, days: int = 30, now: datetime | None = None) -> tuple[int, int]:
+def prune_expired(settings: Settings, repo: Repository, days: int = 30, now: datetime | None = None,
+                  pressure_pct: float = 0, target_pct: float = 75) -> tuple[int, int]:
     """Dọn file gốc của tài sản đã HẾT HẠN đăng ký quá `days` ngày mà không ra phiên mới: xoá file, GIỮ chữ đã đọc (.txt)
-    và thông số. Trừ tài sản đang trong giỏ hàng của ai đó hoặc mức ưu tiên Cao/Rất cao. Trả (số file, số byte)."""
+    và thông số. Trừ tài sản đang trong giỏ hàng của ai đó hoặc mức ưu tiên Cao/Rất cao. Ổ dùng >= pressure_pct: dọn cả
+    tài sản đã hết hạn chưa đủ ngày (hết hạn lâu nhất trước) tới khi ổ < target_pct. Trả (số file, số byte)."""
     from .realestate.db import CartItem, Property, PropertyNotice
     if days <= 0:
         return 0, 0
     now = now or datetime.now()
     base = settings.path(settings.data_dir)
     keep = select(CartItem.property_id)
+    # ổ gần đầy (>= pressure_pct): dọn cả tài sản đã hết hạn chưa đủ `days` ngày, hết hạn lâu nhất trước, tới khi
+    # ổ còn < target_pct – để vẫn đọc được file của tài sản CÒN HẠN (ưu tiên lấy đủ dữ liệu tài sản còn hạn)
+    pressure = bool(pressure_pct) and _disk_pct(base) >= pressure_pct
+    cutoff = now if pressure else now - timedelta(days=days)
     with repo.session() as s:
         rows = s.execute(select(NoticeFile.id, NoticeFile.path, NoticeFile.size)
                          .join(PropertyNotice, PropertyNotice.notice_id == NoticeFile.notice_id)
                          .join(Property, Property.id == PropertyNotice.property_id)
                          .where(NoticeFile.path.is_not(None), NoticeFile.removed_at.is_(None),
-                                Property.registration_end < now - timedelta(days=days),
-                                Property.priority < 3, Property.id.not_in(keep))).all()
+                                Property.registration_end < cutoff,
+                                Property.priority < 3, Property.id.not_in(keep))
+                         .order_by(Property.registration_end)).all()
     n = freed = 0
-    for fid, rel, size in rows:
+    for i, (fid, rel, size) in enumerate(rows):
+        if pressure and i % 20 == 0 and _disk_pct(base) < target_pct:
+            break
         f = base / rel
         if f.exists():
             f.unlink()
@@ -137,7 +146,8 @@ def prune_expired(settings: Settings, repo: Repository, days: int = 30, now: dat
             n += 1
         with repo.Session.begin() as s:
             s.get(NoticeFile, fid).removed_at = now
-    log.info("Dọn file tài sản hết hạn > %s ngày: %s file, %.1f GB", days, n, freed / 1e9)
+    log.info("Dọn file tài sản hết hạn %s: %s file, %.1f GB",
+             "(ổ gần đầy – dọn cả tài sản hết hạn chưa đủ ngày)" if pressure else f"> {days} ngày", n, freed / 1e9)
     return n, freed
 
 
@@ -420,7 +430,8 @@ def process_notice(nid: int, repo: Repository, settings: Settings, fetchers: dic
         # hết hạn quá keep_days ngày (không ra phiên mới): chỉ đọc lấy thông số, không giữ file gốc
         text_only = text_only_expired and bool(reg_end and reg_end < datetime.now() - timedelta(days=keep_days))
         fetcher = _fetcher(fetchers, settings, src_name)
-        files = sorted(list_files(n, fetcher), key=lambda f: _file_rank(f[0]))
+        # nguồn đôi khi liệt kê CÙNG một file 2 lần trong một tin -> bỏ trùng theo đường dẫn
+        files = sorted({u: (nm, u) for nm, u in reversed(list_files(n, fetcher))}.values(), key=lambda f: _file_rank(f[0]))
     folder = Path("files") / src_name / (pub.strftime("%Y-%m") if pub else "khac") / _safe_name(sid)
     infos: list[tuple[dict, str]] = []
     seen_names: set[str] = set()

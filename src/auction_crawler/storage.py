@@ -107,6 +107,7 @@ class Repository:
         Base.metadata.create_all(self.engine)
         self._add_missing_columns()
         with self.engine.begin() as c:
+            c.execute(text("DROP TABLE IF EXISTS merge_suggestions"))   # tính năng gợi ý gộp đã bỏ (tự gộp)
             c.execute(text("UPDATE property_notices SET link_source = CASE WHEN manual THEN 'manual' ELSE 'auto' END "
                            "WHERE link_source IS NULL"))
 

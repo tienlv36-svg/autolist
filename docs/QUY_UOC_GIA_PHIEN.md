@@ -94,7 +94,9 @@ thì dừng tải và báo Telegram.
 
 **Lưu trữ:** PDF scan > 1,5 MB được nén (150 dpi); file > 25 MB không tải (giữ link nguồn). Tài sản **hết hạn quá 30
 ngày** mà không ra phiên mới: file gốc được **tự dọn** mỗi đêm, giữ chữ đã đọc và thông số (trừ tài sản trong giỏ hàng
-hoặc ưu tiên Cao/Rất cao); tài sản như vậy khi lấp dữ liệu chỉ **đọc lấy thông số, không giữ file**.
+hoặc ưu tiên Cao/Rất cao); tài sản như vậy khi lấp dữ liệu chỉ **đọc lấy thông số, không giữ file**. Khi ổ cứng dùng
+≥ 80%, phần mềm dọn sớm cả file của tài sản đã hết hạn chưa đủ 30 ngày (hết hạn lâu nhất trước) tới khi ổ còn < 75%,
+để luôn còn chỗ cho file của tài sản **còn hạn**.
 
 **Trích thông số** (tổng DT đất, đất ở, đất khác, DT sàn, chiều ngang/dài, số tờ, số thửa) chỉ từ **đoạn mô tả tài
 sản** của file (“Tên tài sản…”, “Tài sản đấu giá…” đến trước “Giá khởi điểm”), theo đúng quy tắc thận trọng: có nhãn
@@ -135,10 +137,19 @@ rõ và chỉ một giá trị; file nhiều thửa/lô → không lấy.
 
 ## 7. Gộp phiên tự động
 
-Ngoài các cách ở mục 1, phần mềm **tự gộp** các tin cùng tỉnh + cùng đúng tờ/thửa **và** trùng diện tích hoặc số giấy
-chứng nhận (kể cả khi xã/phường ghi tên cũ ở phiên trước, tên mới ở phiên sau); hoặc cùng số giấy chứng nhận + cùng
-tờ/thửa (hay cùng diện tích khi cả hai không ghi tờ/thửa). Không gộp khi hai tin ghi xã/phường cùng thời kỳ mà khác nhau,
-hoặc tin nhiều thửa/lô. Gộp sai → bấm **Tách** ở phiên đó (được giữ cố định).
+Ngoài các cách ở mục 1, phần mềm **tự gộp** hai tin là cùng một BĐS khi:
+
+| Căn cứ | Điều kiện thêm |
+|---|---|
+| Cùng tỉnh + cùng đúng **tờ/thửa** | và trùng thêm 1 trong: diện tích, số giấy chứng nhận, xã/phường, chủ tài sản |
+| Cùng **số giấy chứng nhận** | và cùng tờ/thửa (hoặc cùng diện tích khi cả hai không ghi tờ/thửa) |
+| Cùng **diện tích** + cùng xã/phường | và cùng chủ tài sản hoặc mô tả giống ≥ 70%, mọi con số trong mô tả trùng nhau |
+| Tin **đấu lại gần như y hệt** | cùng chủ tài sản, cùng nơi, mô tả giống ≥ 90% (không tính “lần N”, ngày giờ, giá), **mọi con số trùng nhau** (khác số căn/số nhà → không gộp) |
+
+Tờ/thửa, diện tích lấy cả từ file đính kèm khi tin đăng không ghi. Xã/phường so phần tên (“thị trấn Thạnh Mỹ” và “xã
+Thạnh Mỹ” là một). **Không gộp** khi: tờ/thửa, diện tích (lệch > 1%) hoặc xã/phường cùng thời kỳ tên gọi mâu thuẫn; hai tin
+**cùng ngày đấu giá** mà không trùng tờ/thửa hay số GCN (thường là các lô khác nhau của một cuộc); phiên sau đắt hơn
+phiên trước > 5% mà không có tờ/thửa/GCN trùng; tin nhiều thửa/lô. Gộp sai → bấm **Tách** ở phiên đó (giữ cố định).
 
 ## 8. Việc của người dùng
 

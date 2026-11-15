@@ -30,7 +30,7 @@ OTHER_LAND = re.compile(r"\b(cln|luc|bhk|lua|nts|hnk|skc|tmd|rsx|lnk|ctd|nhk|dgt
                         r"rung san xuat|mat nuoc|giao thong|thuy loi|chuyen dung|phi nong nghiep|chuyen trong")
 MULTI_RE = re.compile(r"\bcac (lo|thua|o dat|can|nen)\b|\b\d+\s*(lo|thua|o dat|can ho|can nha|nen)\b|tron goi|"
                       r"\btai san (so )?\d+\s*:|\blo (so )?\d+\s*:|\(lo \d+\)")
-WARD_RE = re.compile(r"\b(xã|phường|thị trấn|đặc khu|p\.|x\.|tt\.)\s*([^\W\d_][^,;()\n]{1,40}?|\d{1,2})"
+WARD_RE = re.compile(r"\b(xã|phường|thị trấn|đặc khu|p\.|x\.|tt\.)\s*([^\W\d_][^,;()\n|]{1,40}?|\d{1,2}(?:\s+[^\W\d_][^,;()\n|]{1,30}?)?)"
                      r"(?=\s*(?:,|;|\||\(|\)|\.\s|$|-|–|\btỉnh\b|\bthành phố\b|\btp\b|\bhuyện\b|\bquận\b|\bthị xã\b))",
                      re.I)
 WARD_PREFIX = {"p.": "Phường", "x.": "Xã", "tt.": "Thị trấn"}
@@ -235,15 +235,17 @@ def _norm_ward(kind: str, name: str) -> str:
 
 
 # chữ không thuộc tên xã/phường hay dính theo: "xã Đông Thành quản lý", "phường Tân An do …"
-_WARD_STOP = {"quan", "ly", "do", "cua", "theo", "thuoc", "voi", "gom", "la", "co", "duoc", "da", "nay", "truoc", "tai",
-              "thua", "dien", "nam", "lan", "cu", "moi", "va", "ban", "giao", "dang", "su", "dung", "cap", "ubnd"}
+# chữ không thuộc tên xã/phường hay dính theo – so CÓ DẤU ("Ka Đô", "Hợp Lý" là tên thật; "do", "quản lý" thì không)
+_WARD_STOP = {"quản", "do", "của", "theo", "thuộc", "với", "gồm", "là", "có", "được", "đã", "nay", "trước", "tại", "thửa",
+              "diện", "năm", "lần", "cũ", "mới", "và", "bàn", "giao", "đang", "sử", "dụng", "cấp", "ubnd", "đối", "gần",
+              "cạnh", "đất", "nhà", "khu", "thôn", "ấp", "tổ", "số"}
 
 
 def _clean_ward_name(name: str) -> str:
     out = []
     for w in name.split():
-        k = strip_accents(w).strip(".,")
-        if out and (k in _WARD_STOP or k == "quản"):
+        k = w.lower().strip(".,")
+        if out and k in _WARD_STOP:
             break
         out.append(w)
     return " ".join(out)
@@ -267,7 +269,8 @@ LOC_MARK = re.compile(r"t[oọ][aạ]\s*l[aạ]c(?:\s+t[aạ]i)?|đ[iị]a\s*ch[
                       r"v[iị]\s*tr[ií]\s+(?:th[uử]a\s*đ[aấ]t|t[aà]i\s*s[aả]n|khu\s*đ[aấ]t)", re.I)
 NAY_RE = re.compile(r"\(\s*nay\s*(?:l[àa]|thu[ộo]c)\s*:?\s*([^)]+)\)|"
                     r"\bnay\s*(?:l[àa]|thu[ộo]c)\s*:?\s*([^;()\n]+?)(?=$|;|\n|\)|\(|\.\s)", re.I)
-PREV_RE = re.compile(r"\(\s*(?:tr[ưu][ớo]c\s*(?:đ[âa]y|kia)|c[ũu])\s*(?:l[àa]|thu[ộo]c)?\s*:?\s*[^)]*\)", re.I)
+PREV_RE = re.compile(r"\(\s*(?:tr[ưu][ớo]c\s*(?:đ[âa]y|kia)|c[ũu])\s*(?:l[àa]|thu[ộo]c)?\s*:?\s*[^)]*\)|"
+                     r"\([^()]*\bc[ũu]\s*\)", re.I)
 
 
 def _nay_parts(text: str) -> list[str]:
@@ -384,6 +387,8 @@ def _province_keys() -> list[tuple[str, str, str]]:
             keys.append((k, new, n))
     keys.append(("ho chi minh", "TP. Hồ Chí Minh", "Hồ Chí Minh"))
     keys.append(("tp hcm", "TP. Hồ Chí Minh", "Hồ Chí Minh"))
+    keys.append(("tphcm", "TP. Hồ Chí Minh", "Hồ Chí Minh"))
+    keys.append(("hcm", "TP. Hồ Chí Minh", "Hồ Chí Minh"))
     return sorted(keys, key=lambda x: -len(x[0]))
 
 
@@ -392,10 +397,10 @@ _PKEYS = _province_keys()
 
 _SUBUNIT_BEFORE = re.compile(r"(?:^|\s)(?:xa|phuong|p|x|thi tran|tt|huyen|h|quan|q|thi xa|tx|ap|thon|khu pho|kp|"
                              r"to dan pho|tdp|duong|pho|so|cum|khu|lang|ban)\s$")
-_EXPLICIT_BEFORE = re.compile(r"(?:^|\s)(?:tinh|thanh pho|tp)\s$")
+_EXPLICIT_BEFORE = re.compile(r"(?:^|\s)(?:tinh|thanh pho|tp|t)\s$")
 
 
-def _provinces_in(t: str) -> list[tuple[str, str]]:
+def _provinces_in(t: str, prefer_explicit: bool = True) -> list[tuple[str, str]]:
     """Tỉnh/thành nhắc trong văn bản (đã quy đổi tên tỉnh cũ). Bỏ tên trùng tên xã/phường/huyện ("xã Bình Dương",
     "phường Khánh Hòa", "huyện Thạnh Hóa"); có tên đi sau chữ "tỉnh/thành phố" thì chỉ lấy các tên đó."""
     norm = " " + re.sub(r"[\s,.\-;:()]+", " ", strip_accents(t or "")) + " "
@@ -407,11 +412,14 @@ def _provinces_in(t: str) -> list[tuple[str, str]]:
                 continue
             taken.append((m.start(), m.end()))
             before = norm[max(0, m.start() - 14):m.start()]
-            explicit = bool(_EXPLICIT_BEFORE.search(before))
-            if not explicit and _SUBUNIT_BEFORE.search(before):
+            explicit = bool(_EXPLICIT_BEFORE.search(before)) or key.startswith(("tp ", "tphcm"))
+            wide = norm[max(0, m.start() - 24):m.start()]
+            house_no = re.search(r"(?:^|\s)\d+[a-z]?\d*\s$", wide) and not re.search(
+                r"(?:^|\s)(?:phuong|p|quan|q|xa|x|khu pho|kp|to|ap)\s\d+[a-z]?\d*\s$", wide)
+            if not explicit and (_SUBUNIT_BEFORE.search(before) or house_no):
                 continue
             found.append((m.start(), new, orig, explicit))
-    if any(e for *_, e in found):
+    if prefer_explicit and any(e for *_, e in found):
         found = [f for f in found if f[3]]
     return [(n, o) for _, n, o, _ in sorted(found)]
 
@@ -458,7 +466,7 @@ def place_rejection(place: str | None, owner: str | None = None, owner_address: 
     oa = re.sub(r"\W+", "", strip_accents(owner_address or ""))
     if len(oa) >= 15 and re.sub(r"\W+", "", n) == oa:
         return "ô 'nơi có tài sản' trùng địa chỉ người có tài sản"
-    if not re.search(r"\(\s*nay la", n) and len({x for x, _ in _provinces_in(place)}) > 1:
+    if not re.search(r"\(\s*nay la", n) and len({x for x, _ in _provinces_in(place, prefer_explicit=False)}) > 1:
         return "ô 'nơi có tài sản' nhắc nhiều tỉnh/thành (thường là địa chỉ các chi nhánh)"
     return None
 

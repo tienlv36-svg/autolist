@@ -72,6 +72,7 @@ def mock(calls):
             sid = req.url.params["auctionInfoId"]
             return httpx.Response(200, json={"listFile": [
                 {"fileName": f"Thong bao {sid}.docx", "linkFile": f"/upload/{sid}/tb.docx"},
+                {"fileName": f"Thong bao {sid}.docx", "linkFile": f"/upload/{sid}/tb.docx"},     # nguồn liệt kê trùng
                 {"fileName": "anh.zip", "linkFile": f"/upload/{sid}/anh.zip"}]})
         if "download" in req.url.path:
             if req.url.params["path"].endswith(".zip"):
@@ -322,3 +323,18 @@ def test_requeue_old_outage_failures(env):
     assert requeue_outages(repo) == 1
     with repo.session() as ss:
         assert ss.get(NoticeRow, aid).docs_at is None and ss.get(NoticeRow, bid).docs_at is not None
+
+
+def test_prune_under_disk_pressure_includes_recently_expired(env, monkeypatch):
+    import auction_crawler.attachments as att
+    s, repo = env
+    base = s.path(s.data_dir)
+    with repo.Session.begin() as ss:
+        nid = ss.query(NoticeRow).filter_by(source_id="12").one().id      # tài sản hết hạn ~30 ngày trước
+        rel = "files/dgts/x/12/tb.pdf"
+        (base / rel).parent.mkdir(parents=True, exist_ok=True)
+        (base / rel).write_bytes(b"%PDF" + b"0" * 100)
+        ss.add(NoticeFile(notice_id=nid, filename="tb.pdf", url="u12", path=rel, size=104))
+    assert att.prune_expired(s, repo, days=60) == (0, 0)                  # chưa đủ 60 ngày, ổ thoáng -> giữ
+    monkeypatch.setattr(att, "_disk_pct", lambda p: 90.0)
+    assert att.prune_expired(s, repo, days=60, pressure_pct=80, target_pct=75)[0] == 1   # ổ 90% -> dọn sớm

@@ -26,7 +26,9 @@ trùng → gom phiên tài sản BĐS (`re-build`) → quét lịch sử giá ch
 đính kèm (tin mới trước; `docs_minutes` phút) → gom phiên lại → bộ lọc đã lưu + nhắc hạn (Telegram cá nhân) → sao lưu →
 báo cáo Telegram. **Lượt lấp dữ liệu** (`fill_cron`, ≤ `fill_minutes` phút, dừng trước 1:45): lấy giá tin BĐS còn thiếu +
 đọc file đính kèm của TIN GẦN NHẤT mỗi tài sản: còn hạn thiếu thông tin trước, rồi tài sản năm 2026 đã hết hạn (kết thúc
-gần đây trước). Gom phiên tự gộp tin cùng BĐS khi đủ căn cứ (cùng tờ/thửa + diện tích hoặc số GCN), kể cả tên xã cũ/mới.
+gần đây trước). Gom phiên tự gộp tin cùng BĐS khi đủ căn cứ (cùng tờ/thửa + diện tích/GCN/xã/chủ; cùng GCN + tờ/thửa
+hoặc diện tích; tin đấu lại gần như y hệt cùng chủ, cùng nơi, mọi con số trùng), kể cả tên xã cũ/mới; không gộp khi
+cùng ngày đấu giá (các lô khác nhau), mâu thuẫn tờ/thửa/diện tích/xã.
 
 ## Chạy lệnh đúng cách
 
@@ -99,7 +101,8 @@ tự sửa trong `/root/autolist` (token GitHub trên VPS chỉ có quyền đ�
 - Số liệu tài sản (diện tích, tờ/thửa, kích thước) ưu tiên lấy từ file đính kèm; OCR khác tin đăng → để trống
   (`properties.field_sources` ghi trường nào lấy từ tài liệu). File gốc của tài sản hết hạn quá 30 ngày được **lịch tự động**
   dọn (`docs-prune`, giữ `.txt`; trừ giỏ hàng/ưu tiên cao); tài sản hết hạn quá 30 ngày chỉ đọc lấy thông số, không giữ
-  file. Ngoài lịch đó, **không tự xoá** `data/files/` khi chưa được yêu cầu.
+  file. Ổ dùng ≥ 80%: lịch tự dọn sớm cả file tài sản đã hết hạn chưa đủ 30 ngày (hết hạn lâu nhất trước) tới khi ổ <
+  75%. Ngoài lịch đó, **không tự xoá** `data/files/` khi chưa được yêu cầu.
 
 ## An toàn – PHẢI hỏi người dùng trước khi
 

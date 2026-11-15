@@ -195,51 +195,114 @@ def cluster(items: list[Item], manual: dict[int, int]) -> list[list[Item]]:
     return list(groups.values())
 
 
+def _area(it: Item) -> float | None:
+    return it.info.land_area or ((it.doc or {}).get("land_area") if it.doc and not it.info.multi else None)
+
+
 def _same_area(a: Item, b: Item) -> bool:
-    return bool(a.info.land_area and b.info.land_area and abs(a.info.land_area - b.info.land_area) <= 0.5)
+    x, y = _area(a), _area(b)
+    return bool(x and y and abs(x - y) <= 0.5)
+
+
+def _area_conflict(a: Item, b: Item) -> bool:
+    x, y = _area(a), _area(b)
+    return bool(x and y and abs(x - y) > max(0.5, 0.01 * max(x, y)))
 
 
 def _parcel(it: Item):
-    return (it.info.map_sheet.lstrip("0"), it.info.parcel_no.lstrip("0")) if it.info.map_sheet and it.info.parcel_no else None
+    sheet, no = it.info.map_sheet, it.info.parcel_no
+    if not (sheet and no) and it.doc and not it.info.multi:
+        sheet, no = it.doc.get("map_sheet"), it.doc.get("parcel_no")
+    return (str(sheet).lstrip("0"), str(no).lstrip("0")) if sheet and no else None
+
+
+_WARD_PREFIX_RE = re.compile(r"^(xa|phuong|thi tran|dac khu)\s+")
+
+
+def _core_ward(w: str | None) -> str:
+    """Tên xã/phường bỏ dấu, bỏ chữ "xã/phường/thị trấn" (thị trấn Thạnh Mỹ -> xã Thạnh Mỹ vẫn là "thanh my")."""
+    return _WARD_PREFIX_RE.sub("", ward_key(w))
 
 
 def _ward_conflict(a: Item, b: Item) -> bool:
     """Hai tin ghi xã/phường CÙNG thời kỳ tên gọi (cùng tên cũ hoặc cùng tên mới) mà khác nhau -> khác nơi."""
     return bool(a.info.ward and b.info.ward and a.info.ward_new == b.info.ward_new
-                and ward_key(a.info.ward) != ward_key(b.info.ward))
+                and _core_ward(a.info.ward) != _core_ward(b.info.ward))
+
+
+_NOISE_RE = re.compile(r"\(?\s*(dau gia\s*)?(lai\s*)?lan\s*(thu\s*)?\d+\s*\)?|\d{1,2}/\d{1,2}/\d{2,4}|"
+                       r"\d{1,2}\s*gio(\s*\d{1,2}\s*phut)?|gia khoi diem[^.;]*|\d[\d.,]*\s*(dong|vnd|vnđ|ty|trieu)\b")
+
+
+def _title_sig(it: Item) -> tuple[frozenset, frozenset]:
+    """(các từ, các con số) của mô tả – bỏ "lần N", ngày giờ, số tiền (thay đổi giữa các phiên đấu lại)."""
+    n = _NOISE_RE.sub(" ", strip_accents(f"{it.title} "))
+    words = frozenset(w for w in re.findall(r"[a-z]+", n) if len(w) > 1)
+    nums = frozenset(x.lstrip("0") for x in re.findall(r"\d+", n))
+    return words, nums
+
+
+def _same_day(a: Item, b: Item) -> bool:
+    return bool(a.auction_date and b.auction_date and a.auction_date.date() == b.auction_date.date())
+
+
+def _price_ok(a: Item, b: Item) -> bool:
+    """Đấu giá lại thường GIẢM giá: phiên sau không đắt hơn phiên trước quá 5%."""
+    if not (a.price and b.price and a.auction_date and b.auction_date):
+        return True
+    old, new = (a, b) if a.auction_date <= b.auction_date else (b, a)
+    return new.price <= old.price * 1.05
+
+
+def same_property(a: Item, b: Item, sig: dict) -> bool:
+    """Hai tin là CÙNG một BĐS (đấu giá lại) – quyết định tự động, có chốt chặn chống gộp nhầm lô khác."""
+    if a.info.multi or b.info.multi or (a.province and b.province and a.province != b.province):
+        return False
+    pa, pb = _parcel(a), _parcel(b)
+    if (pa and pb and pa != pb) or _area_conflict(a, b) or _ward_conflict(a, b):
+        return False
+    parcel_eq, gcn_eq, area_eq = bool(pa and pa == pb), bool(a.gcn & b.gcn), _same_area(a, b)
+    ward_eq = bool(a.info.ward and b.info.ward and _core_ward(a.info.ward) == _core_ward(b.info.ward))
+    owner_eq = bool(_owner_key(a.owner) and _owner_key(a.owner) == _owner_key(b.owner))
+    hard = parcel_eq or gcn_eq
+    if _same_day(a, b) and not hard:
+        return False                                  # cùng ngày đấu giá: thường là các lô khác nhau của 1 cuộc
+    if not hard and not _price_ok(a, b):
+        return False
+    if parcel_eq and (area_eq or gcn_eq or ward_eq or owner_eq):
+        return True
+    if gcn_eq and (parcel_eq or area_eq) and not (bool(pa) != bool(pb)):
+        return True
+    (wa, na), (wb, nb) = sig[a.nid], sig[b.nid]
+    sim = len(wa & wb) / len(wa | wb) if wa and wb else 0.0
+    place_ok = ward_eq or (not a.info.ward and not b.info.ward and a.province and a.province == b.province)
+    if area_eq and ward_eq and (owner_eq or sim >= 0.7) and na == nb:
+        return True
+    # tin đấu lại gần như y hệt (chỉ khác "lần N", ngày, giá): cùng chủ, cùng nơi, mọi con số trong mô tả trùng nhau
+    return bool(owner_eq and place_ok and sim >= 0.9 and na and na == nb)
 
 
 def _auto_merge(items: list[Item], dsu: DSU) -> None:
-    """Gộp TỰ ĐỘNG các tin cùng một BĐS khi đủ căn cứ dù tên xã/phường ghi khác (tên cũ/mới sau sắp xếp 2025):
-    - cùng tỉnh + cùng đúng tờ/thửa, và trùng thêm diện tích hoặc số giấy chứng nhận;
-    - cùng số giấy chứng nhận, tờ/thửa không mâu thuẫn, và cùng tờ/thửa hoặc cùng diện tích.
-    Xã/phường cùng thời kỳ tên gọi mà khác nhau -> không gộp. Tin nhiều thửa/lô không xét.
-    Người dùng đã tách riêng (khoá tay) thì không gộp."""
-    by_parcel: dict[tuple, list[Item]] = defaultdict(list)
-    by_gcn: dict[str, list[Item]] = defaultdict(list)
-    for it in items:
-        if it.info.multi:
-            continue
+    """Gộp TỰ ĐỘNG các tin cùng một BĐS (xem same_property). Ghép cặp trong các nhóm: cùng tờ/thửa, cùng số GCN,
+    cùng diện tích, cùng chủ + xã/phường. Người dùng đã tách riêng (khoá tay) thì DSU không gộp."""
+    pool = [it for it in items if not it.info.multi]
+    sig = {it.nid: _title_sig(it) for it in pool}
+    blocks: dict[tuple, list[Item]] = defaultdict(list)
+    for it in pool:
         if (pc := _parcel(it)) and it.province:
-            by_parcel[(it.province, *pc)].append(it)
+            blocks[("t", it.province, *pc)].append(it)
         for g in it.gcn:
-            by_gcn[g].append(it)
-    for grp in by_parcel.values():
+            blocks[("g", g)].append(it)
+        if (ar := _area(it)) and it.province:
+            blocks[("a", it.province, round(ar))].append(it)
+        if (ok := _owner_key(it.owner)) and it.province:
+            blocks[("o", it.province, ok, _core_ward(it.info.ward))].append(it)
+    for grp in blocks.values():
+        if len(grp) < 2 or len(grp) > 400:
+            continue
         for i, a in enumerate(grp):
             for b in grp[i + 1:]:
-                if _ward_conflict(a, b):
-                    continue
-                if _same_area(a, b) or bool(a.gcn & b.gcn):
-                    dsu.union(a.nid, b.nid)
-    for grp in by_gcn.values():
-        if len(grp) > 20:
-            continue                                  # số GCN quá phổ biến -> nghi bắt nhầm, bỏ
-        for i, a in enumerate(grp):
-            for b in grp[i + 1:]:
-                pa, pb = _parcel(a), _parcel(b)
-                if bool(pa) != bool(pb) or (pa and pa != pb):
-                    continue
-                if (pa or _same_area(a, b)) and not _ward_conflict(a, b):
+                if dsu.find(a.nid) != dsu.find(b.nid) and same_property(a, b, sig):
                     dsu.union(a.nid, b.nid)
 
 

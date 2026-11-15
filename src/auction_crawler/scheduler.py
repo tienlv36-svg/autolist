@@ -147,7 +147,10 @@ def _docs_then_rebuild(settings: Settings, repo: Repository, minutes: float):
 
 def _prune(settings: Settings, repo: Repository) -> tuple[int, int]:
     from .attachments import prune_expired
-    return prune_expired(settings, repo, days=int(settings.schedule.get("docs_keep_expired_days", 30)))
+    sch = settings.schedule
+    return prune_expired(settings, repo, days=int(sch.get("docs_keep_expired_days", 30)),
+                         pressure_pct=float(sch.get("docs_pressure_prune_pct", 80)),
+                         target_pct=float(sch.get("docs_pressure_target_pct", 75)))
 
 
 def _compress(settings: Settings, repo: Repository) -> tuple[int, int]:
@@ -211,6 +214,7 @@ def run_fill(settings: Settings, repo: Repository, now: datetime | None = None) 
     res: dict[str, Any] = {"enriched": 0, "docs_notices": 0, "docs_with_info": 0, "ocr_files": 0, "compressed": 0}
     try:
         with run_lock(settings):
+            res["pruned"] = _prune(settings, repo)[1]
             res["compressed"] = _compress(settings, repo)[1]
             res["enriched"] = _enrich_re(settings, repo, int(sch.get("enrich_limit", 2000)))
             left = budget - (time.time() - t0) / 60
@@ -234,7 +238,7 @@ def run_fill(settings: Settings, repo: Repository, now: datetime | None = None) 
         acc = json.loads(p.read_text()) if p.exists() else {}
     except (OSError, ValueError):
         acc = {}
-    for k in ("enriched", "docs_notices", "docs_with_info", "ocr_files", "compressed"):
+    for k in ("enriched", "docs_notices", "docs_with_info", "ocr_files", "compressed", "pruned"):
         acc[k] = int(acc.get(k, 0)) + int(res.get(k) or 0)
     acc["runs"] = int(acc.get("runs", 0)) + 1
     p.write_text(json.dumps(acc))
@@ -315,10 +319,11 @@ def format_report(settings: Settings, repo: Repository, report: dict[str, Any]) 
         lines.append(f"• Lấp dữ liệu trong ngày ({num(fl['runs'])} lượt): bổ sung giá {num(fl.get('enriched'))} tin, "
                      f"đọc file {num(fl.get('docs_notices'))} tin (OCR {num(fl.get('ocr_files'))} file), "
                      f"có số liệu {num(fl.get('docs_with_info'))} tin"
-                     + (f", nén file tiết kiệm {fl['compressed'] / 1e9:.1f} GB" if fl.get("compressed") else ""))
+                     + (f", nén file tiết kiệm {fl['compressed'] / 1e9:.1f} GB" if fl.get("compressed") else "")
+                     + (f", dọn file tài sản hết hạn {fl['pruned'] / 1e9:.1f} GB" if fl.get("pruned") else ""))
     pr = (steps.get("prune") or {}).get("result")
     if pr and pr[0]:
-        lines.append(f"• Dọn file tài sản hết hạn > 30 ngày: {num(pr[0])} file, {pr[1] / 1e9:.1f} GB (giữ chữ đã đọc)")
+        lines.append(f"• Dọn file tài sản hết hạn: {num(pr[0])} file, {pr[1] / 1e9:.1f} GB (giữ chữ đã đọc)")
     cp = (steps.get("compress") or {}).get("result")
     if cp and cp[1]:
         lines.append(f"• Nén file đính kèm: {num(cp[0])} file, tiết kiệm {cp[1] / 1e9:.1f} GB")
