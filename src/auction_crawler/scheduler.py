@@ -139,7 +139,8 @@ def _docs_then_rebuild(settings: Settings, repo: Repository, minutes: float):
                     ocr_max_pages=int(sch.get("ocr_max_pages", 8)), workers=int(sch.get("docs_workers", 0)),
                     min_days=float(sch.get("docs_min_days", 2)), max_file_mb=float(sch.get("docs_max_file_mb", 25)),
                     text_only_expired=bool(sch.get("docs_text_only_expired", True)),
-                    keep_days=int(sch.get("docs_keep_expired_days", 30)))
+                    keep_days=int(sch.get("docs_keep_expired_days", 30)),
+                    all_days=int(sch.get("docs_delete_all_days", 90)))
     if st.notices:
         rebuild(repo)
     return st
@@ -150,7 +151,8 @@ def _prune(settings: Settings, repo: Repository) -> tuple[int, int]:
     sch = settings.schedule
     return prune_expired(settings, repo, days=int(sch.get("docs_keep_expired_days", 30)),
                          pressure_pct=float(sch.get("docs_pressure_prune_pct", 80)),
-                         target_pct=float(sch.get("docs_pressure_target_pct", 75)))
+                         target_pct=float(sch.get("docs_pressure_target_pct", 75)),
+                         all_days=int(sch.get("docs_delete_all_days", 90)))
 
 
 def _compress(settings: Settings, repo: Repository) -> tuple[int, int]:

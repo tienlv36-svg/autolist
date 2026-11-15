@@ -92,9 +92,9 @@ ngày**; (3) còn hạn < 2 ngày — trong mỗi nhóm, tài sản đang **thi�
 đã xong tài sản còn hạn: tài sản **năm 2026 đã hết hạn còn thiếu thông tin**, kết thúc gần đây trước. Ổ cứng dùng ≥ 85%
 thì dừng tải và báo Telegram.
 
-**Lưu trữ:** PDF scan > 1,5 MB được nén (150 dpi); file > 25 MB không tải (giữ link nguồn). Tài sản **hết hạn quá 30
-ngày** mà không ra phiên mới: file gốc được **tự dọn** mỗi đêm, giữ chữ đã đọc và thông số (trừ tài sản trong giỏ hàng
-hoặc ưu tiên Cao/Rất cao); tài sản như vậy khi lấp dữ liệu chỉ **đọc lấy thông số, không giữ file**. Khi ổ cứng dùng
+**Lưu trữ:** PDF scan > 1,5 MB được nén (150 dpi); file > 25 MB không tải (giữ link nguồn). Tài sản hết hạn mà không ra phiên mới (giữ chữ đã đọc và thông số; trừ tài sản trong giỏ hàng
+hoặc ưu tiên Cao/Rất cao): **quá 30 ngày** → tự dọn **quy chế, thông báo** (và khi lấp dữ liệu chỉ đọc, không lưu các
+file này); **bản vẽ sơ đồ thửa đất, sổ hồng/giấy chứng nhận, ảnh** và tài liệu khác **giữ lại**; **quá 90 ngày** → dọn hết. Khi ổ cứng dùng
 ≥ 80%, phần mềm dọn sớm cả file của tài sản đã hết hạn chưa đủ 30 ngày (hết hạn lâu nhất trước) tới khi ổ còn < 75%,
 để luôn còn chỗ cho file của tài sản **còn hạn**.
 

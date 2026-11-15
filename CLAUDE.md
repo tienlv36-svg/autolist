@@ -99,9 +99,9 @@ tự sửa trong `/root/autolist` (token GitHub trên VPS chỉ có quyền đ�
 - Quy ước phiên, giá phiên 1, giá hiện tại, % giảm, quét lịch sử: `docs/QUY_UOC_GIA_PHIEN.md`.
 - Giá taisancong (OCR từ PDF) chỉ là tham khảo, không phải giá chính thức.
 - Số liệu tài sản (diện tích, tờ/thửa, kích thước) ưu tiên lấy từ file đính kèm; OCR khác tin đăng → để trống
-  (`properties.field_sources` ghi trường nào lấy từ tài liệu). File gốc của tài sản hết hạn quá 30 ngày được **lịch tự động**
-  dọn (`docs-prune`, giữ `.txt`; trừ giỏ hàng/ưu tiên cao); tài sản hết hạn quá 30 ngày chỉ đọc lấy thông số, không giữ
-  file. Ổ dùng ≥ 80%: lịch tự dọn sớm cả file tài sản đã hết hạn chưa đủ 30 ngày (hết hạn lâu nhất trước) tới khi ổ <
+  (`properties.field_sources` ghi trường nào lấy từ tài liệu). **Lịch tự động** dọn file gốc của tài sản hết hạn không ra
+  phiên mới (`docs-prune`, giữ `.txt` và thông số; trừ giỏ hàng/ưu tiên cao): quá 30 ngày → quy chế/thông báo; quá 90
+  ngày → mọi file. Bản vẽ sơ đồ thửa đất, sổ hồng, ảnh… giữ tới 90 ngày. Ổ dùng ≥ 80%: lịch tự dọn sớm cả file tài sản đã hết hạn chưa đủ 30 ngày (hết hạn lâu nhất trước) tới khi ổ <
   75%. Ngoài lịch đó, **không tự xoá** `data/files/` khi chưa được yêu cầu.
 
 ## An toàn – PHẢI hỏi người dùng trước khi

@@ -341,7 +341,8 @@ def docs_fetch(minutes: float = typer.Option(300, "--minutes", "-m", help="Giớ
 
 
 @app.command("docs-prune")
-def docs_prune(days: int = typer.Option(30, "--days", help="Hết hạn đăng ký quá N ngày")):
+def docs_prune(days: int = typer.Option(30, "--days", help="Quy chế/thông báo: hết hạn quá N ngày"),
+               all_days: int = typer.Option(90, "--all-days", help="Mọi file (cả sơ đồ, sổ hồng): hết hạn quá N ngày")):
     """Dọn file gốc của tài sản hết hạn quá N ngày (không ra phiên mới); giữ chữ đã đọc và thông số.
     Trừ tài sản trong giỏ hàng hoặc ưu tiên Cao/Rất cao."""
     from .attachments import prune_expired
@@ -349,7 +350,7 @@ def docs_prune(days: int = typer.Option(30, "--days", help="Hết hạn đăng k
 
     s, repo = _setup()
     with run_lock(s):
-        n, freed = prune_expired(s, repo, days=days)
+        n, freed = prune_expired(s, repo, days=days, all_days=all_days)
     console.print(f"Đã dọn {n} file, giải phóng {freed / 1e9:.1f} GB")
 
 

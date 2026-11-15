@@ -112,23 +112,35 @@ def compress_pdf(path: Path, strong: bool = True, min_size: int = COMPRESS_MIN) 
     return None
 
 
+# Tài liệu "thường lệ" của tin (quy chế, thông báo, quyết định…): dọn sau docs_keep_expired_days (30) ngày.
+# Tài liệu KHÁC (bản vẽ sơ đồ thửa đất, sổ hồng/giấy chứng nhận, ảnh, trích lục…): giữ tới docs_delete_all_days (90).
+CORE_DOC_RE = re.compile(r"quy\s*che|\bqc\b|thong\s*bao|\btb\b|quyet\s*dinh|\bqd\b|bien\s*ban|hop\s*dong|"
+                         r"danh\s*muc|phu\s*luc|to\s*trinh|cong\s*van|giay\s*moi|mau\s*don|don\s*dang\s*ky")
+
+
+def is_core_doc(filename: str | None) -> bool:
+    return bool(CORE_DOC_RE.search(strip_accents(filename or "").replace("_", " ").replace("-", " ")))
+
+
 def prune_expired(settings: Settings, repo: Repository, days: int = 30, now: datetime | None = None,
-                  pressure_pct: float = 0, target_pct: float = 75) -> tuple[int, int]:
-    """Dọn file gốc của tài sản đã HẾT HẠN đăng ký quá `days` ngày mà không ra phiên mới: xoá file, GIỮ chữ đã đọc (.txt)
-    và thông số. Trừ tài sản đang trong giỏ hàng của ai đó hoặc mức ưu tiên Cao/Rất cao. Ổ dùng >= pressure_pct: dọn cả
-    tài sản đã hết hạn chưa đủ ngày (hết hạn lâu nhất trước) tới khi ổ < target_pct. Trả (số file, số byte)."""
+                  pressure_pct: float = 0, target_pct: float = 75, all_days: int = 90) -> tuple[int, int]:
+    """Dọn file gốc của tài sản đã HẾT HẠN đăng ký mà không ra phiên mới (giữ chữ đã đọc .txt và thông số):
+    - quá `days` (30) ngày: chỉ dọn tài liệu thường lệ (quy chế, thông báo…); bản vẽ sơ đồ, sổ hồng, ảnh… GIỮ LẠI;
+    - quá `all_days` (90) ngày: dọn HẾT mọi file;
+    - ổ dùng >= pressure_pct: dọn sớm tài liệu thường lệ của tài sản đã hết hạn chưa đủ ngày (hết hạn lâu nhất trước)
+      tới khi ổ < target_pct.
+    Trừ tài sản đang trong giỏ hàng của ai đó hoặc mức ưu tiên Cao/Rất cao. Trả (số file, số byte)."""
     from .realestate.db import CartItem, Property, PropertyNotice
     if days <= 0:
         return 0, 0
     now = now or datetime.now()
     base = settings.path(settings.data_dir)
     keep = select(CartItem.property_id)
-    # ổ gần đầy (>= pressure_pct): dọn cả tài sản đã hết hạn chưa đủ `days` ngày, hết hạn lâu nhất trước, tới khi
-    # ổ còn < target_pct – để vẫn đọc được file của tài sản CÒN HẠN (ưu tiên lấy đủ dữ liệu tài sản còn hạn)
     pressure = bool(pressure_pct) and _disk_pct(base) >= pressure_pct
     cutoff = now if pressure else now - timedelta(days=days)
     with repo.session() as s:
-        rows = s.execute(select(NoticeFile.id, NoticeFile.path, NoticeFile.size)
+        rows = s.execute(select(NoticeFile.id, NoticeFile.path, NoticeFile.size, NoticeFile.filename,
+                                Property.registration_end)
                          .join(PropertyNotice, PropertyNotice.notice_id == NoticeFile.notice_id)
                          .join(Property, Property.id == PropertyNotice.property_id)
                          .where(NoticeFile.path.is_not(None), NoticeFile.removed_at.is_(None),
@@ -136,8 +148,11 @@ def prune_expired(settings: Settings, repo: Repository, days: int = 30, now: dat
                                 Property.priority < 3, Property.id.not_in(keep))
                          .order_by(Property.registration_end)).all()
     n = freed = 0
-    for i, (fid, rel, size) in enumerate(rows):
-        if pressure and i % 20 == 0 and _disk_pct(base) < target_pct:
+    old_all = now - timedelta(days=all_days) if all_days > 0 else None
+    for i, (fid, rel, size, name, reg_end) in enumerate(rows):
+        if not (is_core_doc(name) or (old_all and reg_end < old_all)):
+            continue                                  # sơ đồ thửa đất, sổ hồng, ảnh…: giữ tới all_days
+        if pressure and i % 20 == 0 and _disk_pct(base) < target_pct and not (old_all and reg_end < old_all):
             break
         f = base / rel
         if f.exists():
@@ -146,8 +161,8 @@ def prune_expired(settings: Settings, repo: Repository, days: int = 30, now: dat
             n += 1
         with repo.Session.begin() as s:
             s.get(NoticeFile, fid).removed_at = now
-    log.info("Dọn file tài sản hết hạn %s: %s file, %.1f GB",
-             "(ổ gần đầy – dọn cả tài sản hết hạn chưa đủ ngày)" if pressure else f"> {days} ngày", n, freed / 1e9)
+    log.info("Dọn file tài sản hết hạn%s: %s file, %.1f GB",
+             " (ổ gần đầy – dọn sớm quy chế/thông báo)" if pressure else "", n, freed / 1e9)
     return n, freed
 
 
@@ -418,7 +433,7 @@ class _Skip(Exception):
 
 def process_notice(nid: int, repo: Repository, settings: Settings, fetchers: dict, stats: DocStats,
                    ocr_max_pages: int = 8, max_bytes: int = 25 * 1048576, text_only_expired: bool = True,
-                   keep_days: int = 30) -> dict[str, Any]:
+                   keep_days: int = 30, all_days: int = 90) -> dict[str, Any]:
     base = settings.path(settings.data_dir)
     with repo.session() as s:
         n = s.get(NoticeRow, nid)
@@ -429,6 +444,7 @@ def process_notice(nid: int, repo: Repository, settings: Settings, fetchers: dic
                            .where(PropertyNotice.notice_id == nid))
         # hết hạn quá keep_days ngày (không ra phiên mới): chỉ đọc lấy thông số, không giữ file gốc
         text_only = text_only_expired and bool(reg_end and reg_end < datetime.now() - timedelta(days=keep_days))
+        drop_all = text_only and bool(reg_end and reg_end < datetime.now() - timedelta(days=all_days))
         fetcher = _fetcher(fetchers, settings, src_name)
         # nguồn đôi khi liệt kê CÙNG một file 2 lần trong một tin -> bỏ trùng theo đường dẫn
         files = sorted({u: (nm, u) for nm, u in reversed(list_files(n, fetcher))}.values(), key=lambda f: _file_rank(f[0]))
@@ -475,12 +491,14 @@ def process_notice(nid: int, repo: Repository, settings: Settings, fetchers: dic
                     p.with_name(p.name + ".txt").write_text(text, encoding="utf-8")
                 nf.method, nf.chars = method, len(text)
                 nf.info = info_from_text(text) if text else {}
-                if not text_only and nf.orig_size is None and (new := compress_pdf(p)):
+                keep_file = not text_only or not (drop_all or is_core_doc(nf.filename))
+                if keep_file and nf.orig_size is None and (new := compress_pdf(p)):
                     nf.orig_size, nf.size = nf.size, new
                     stats.saved += (nf.orig_size or 0) - new
-                if not text_only:
+                if keep_file:
                     nf.compress_level = 2
-                if text_only and method not in ("deferred", "unsupported"):
+                # hết hạn > 30 ngày: quy chế/thông báo chỉ đọc rồi bỏ; sơ đồ thửa, sổ hồng… vẫn lưu (tới 90 ngày)
+                if text_only and method not in ("deferred", "unsupported") and (drop_all or is_core_doc(nf.filename)):
                     p.unlink(missing_ok=True)             # tài sản đã hết hạn: chỉ giữ chữ đã đọc
                     nf.removed_at = datetime.now()
                 stats.ocr_files += method == "ocr"
@@ -533,7 +551,8 @@ def default_workers() -> int:
 
 def fetch_docs(settings: Settings, repo: Repository, *, minutes: float = 300, limit: int = 100_000,
                max_disk_pct: float = 85, ocr_max_pages: int = 8, workers: int = 0, min_days: float = 2,
-               max_file_mb: float = 25, text_only_expired: bool = True, keep_days: int = 30) -> DocStats:
+               max_file_mb: float = 25, text_only_expired: bool = True, keep_days: int = 30,
+               all_days: int = 90) -> DocStats:
     """Tải + đọc file đính kèm cho các tin chưa xử lý, song song nhiều tin, trong giới hạn thời gian / ổ cứng."""
     stats = DocStats()
     deadline = time.monotonic() + minutes * 60
@@ -547,7 +566,7 @@ def fetch_docs(settings: Settings, repo: Repository, *, minutes: float = 300, li
         st = DocStats()
         try:
             process_notice(nid, repo, settings, fetchers, st, ocr_max_pages, int(max_file_mb * 1048576),
-                           text_only_expired, keep_days)
+                           text_only_expired, keep_days, all_days)
         except Exception as e:  # noqa: BLE001
             if is_outage(e):                         # website nguồn sập/bảo trì: không tính lỗi cho tin, dừng lượt
                 outage.append(repr(e)[:200])

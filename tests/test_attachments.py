@@ -338,3 +338,31 @@ def test_prune_under_disk_pressure_includes_recently_expired(env, monkeypatch):
     assert att.prune_expired(s, repo, days=60) == (0, 0)                  # chưa đủ 60 ngày, ổ thoáng -> giữ
     monkeypatch.setattr(att, "_disk_pct", lambda p: 90.0)
     assert att.prune_expired(s, repo, days=60, pressure_pct=80, target_pct=75)[0] == 1   # ổ 90% -> dọn sớm
+
+
+def test_core_doc_classification():
+    from auction_crawler.attachments import is_core_doc
+    for n in ("Quy che dau gia.pdf", "QC_TS_123.pdf", "Thông báo đấu giá.pdf", "TB-DG-05.pdf", "Quyết định.pdf"):
+        assert is_core_doc(n), n
+    for n in ("Ban ve so do thua dat.pdf", "So hong.jpg", "Giay chung nhan QSDD.pdf", "Trich luc.pdf", "anh1.png"):
+        assert not is_core_doc(n), n
+
+
+def test_plot_drawing_kept_until_90_days(env):
+    from auction_crawler.attachments import prune_expired
+    s, repo = env
+    base = s.path(s.data_dir)
+    with repo.Session.begin() as ss:
+        nid = ss.query(NoticeRow).filter_by(source_id="11").one().id
+        for fn in ("Quy che.pdf", "Ban ve so do thua dat.pdf"):
+            rel = f"files/dgts/x/11/{fn}"
+            (base / rel).parent.mkdir(parents=True, exist_ok=True)
+            (base / rel).write_bytes(b"%PDF" + b"0" * 10)
+            ss.add(NoticeFile(notice_id=nid, filename=fn, url=fn, path=rel, size=14))
+    later = datetime.now() + timedelta(days=60)             # hết hạn ~40 ngày
+    assert prune_expired(s, repo, days=30, now=later)[0] == 1
+    assert not (base / "files/dgts/x/11/Quy che.pdf").exists()
+    assert (base / "files/dgts/x/11/Ban ve so do thua dat.pdf").exists()      # sơ đồ: giữ
+    much_later = datetime.now() + timedelta(days=120)      # hết hạn > 90 ngày -> dọn hết
+    assert prune_expired(s, repo, days=30, now=much_later)[0] == 1
+    assert not (base / "files/dgts/x/11/Ban ve so do thua dat.pdf").exists()
