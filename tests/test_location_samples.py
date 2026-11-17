@@ -90,3 +90,27 @@ def test_location_samples_2(name, asset, place, ward, province):
         place = None
     info = extract(asset[:200], asset, place)
     assert (info.ward, info.province) == (ward, province), info.notes
+
+
+CASES3 = [
+    ("5046-ban-do", "Quyền sử dụng đất thửa 129", "thửa 129, tờ bản đồ địa chính số 260 Bản đồ địa chính phường Sầm Sơn "
+     "chỉnh lý năm 2025, phường Trường Sơn, TP Sầm Sơn, tỉnh Thanh Hoá (nay là Tổ dân phố Sơn Lợi, phường Sầm Sơn, "
+     "tỉnh Thanh Hoá)", "Phường Sầm Sơn", "Thanh Hóa"),
+    ("42808-truoc-sap-xep", "Quyền sử dụng đất tại thị trấn Hưng Hà (trước sắp xếp) nay là thôn Đãn Chàng, xã Hưng Hà, "
+     "giáp xã Kim Trung (trước sắp xếp)", "xã Hưng Hà, tỉnh Hưng Yên", "Xã Hưng Hà", "Hưng Yên"),
+    ("42964-thieu-ngoac", "Quyền sử dụng đất", "khóm 1, xã Tân Hồng, tỉnh Đồng Tháp (trước đây là thị trấn Sa Rài, "
+     "huyện Tân Hồng tỉnh Đồng Tháp", "Xã Tân Hồng", "Đồng Tháp"),
+]
+
+
+@pytest.mark.parametrize("name,asset,place,ward,province", CASES3, ids=[c[0] for c in CASES3])
+def test_location_samples_3(name, asset, place, ward, province):
+    assert place_rejection(place, "Chi cục THADS") is None
+    info = extract(asset[:200], asset, place)
+    assert (info.ward, info.province) == (ward, province), info.notes
+
+
+def test_province_name_not_joined_across_comma():
+    from auction_crawler.realestate.extract import _provinces_in
+    assert [n for n, _ in _provinces_in("xã Hưng Hà, tỉnh Hưng Yên")] == ["Hưng Yên"]
+    assert [n for n, _ in _provinces_in("phường Long Hà, Tĩnh Gia")] == []

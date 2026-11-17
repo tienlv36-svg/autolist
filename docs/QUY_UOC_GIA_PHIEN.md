@@ -127,6 +127,10 @@ rõ và chỉ một giá trị; file nhiều thửa/lô → không lấy.
   quyết sáp nhập.
 - Tên tỉnh trùng tên xã/phường/huyện (“xã Bình Dương, tỉnh Gia Lai”, “phường Khánh Hòa, TP Cần Thơ”, “huyện Thạnh Hóa”)
   không bị hiểu là tỉnh; có chữ “tỉnh / thành phố” đi trước thì chỉ lấy tên đó. Tên lặp lại nhiều lần chỉ tính một.
+- “X (trước sắp xếp)”, “(… cũ)”, “(trước đây là …” (kể cả thiếu dấu đóng ngoặc) là tên cũ. Tên bản đồ (“Bản đồ địa chính
+  phường A chỉnh lý năm 2025”) không phải nơi có tài sản. Tên tỉnh không được ghép qua dấu phẩy (“Hưng Hà, tỉnh Hưng
+  Yên” không phải Hà Tĩnh).
+- **Khoản nợ** (gói nợ ngân hàng) không tính là thiếu xã/phường, tỉnh.
 - Ô nơi có tài sản ghi chữ mẫu (“Nơi tài sản tọa lạc”, “tại nơi có tài sản”, “Chi tiết trong Bảng kê”) coi như trống.
 - Khi ô nơi có tài sản và cụm “tọa lạc tại…” không có vị trí, dùng tên/mô tả tài sản nếu chỉ có **một** xã/phường hoặc có
   nhãn “nay là”.

@@ -31,8 +31,9 @@ MISSING = {
     "land_area": ("Tổng diện tích đất", lambda: (eff("land_area").is_(None), _LAND())),
     "floor_area": ("Diện tích sàn (nhà + đất)", lambda: (eff("floor_area").is_(None), [Property.category == "nha_dat"])),
     "parcel": ("Số tờ / số thửa", lambda: (eff("parcel_no").is_(None), _LAND())),
-    "ward": ("Xã / phường", lambda: (eff("ward").is_(None), [])),
-    "province": ("Tỉnh / thành phố", lambda: (eff("province").is_(None), [])),
+    # khoản nợ (gói nợ ngân hàng) không có "vị trí" theo nghĩa BĐS -> không tính thiếu
+    "ward": ("Xã / phường", lambda: (eff("ward").is_(None), [Property.sale_form != "khoan_no"])),
+    "province": ("Tỉnh / thành phố", lambda: (eff("province").is_(None), [Property.sale_form != "khoan_no"])),
     "price_first": ("Giá phiên 1 (tài sản nhiều phiên)", lambda: (eff("price_first").is_(None),
                                                                  [Property.session_count > 1])),
 }

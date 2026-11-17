@@ -238,7 +238,7 @@ def _norm_ward(kind: str, name: str) -> str:
 # chữ không thuộc tên xã/phường hay dính theo – so CÓ DẤU ("Ka Đô", "Hợp Lý" là tên thật; "do", "quản lý" thì không)
 _WARD_STOP = {"quản", "do", "của", "theo", "thuộc", "với", "gồm", "là", "có", "được", "đã", "nay", "trước", "tại", "thửa",
               "diện", "năm", "lần", "cũ", "mới", "và", "bàn", "giao", "đang", "sử", "dụng", "cấp", "ubnd", "đối", "gần",
-              "cạnh", "đất", "nhà", "khu", "thôn", "ấp", "tổ", "số"}
+              "cạnh", "đất", "nhà", "khu", "thôn", "ấp", "tổ", "số", "chỉnh", "bản", "đo"}
 
 
 def _clean_ward_name(name: str) -> str:
@@ -267,10 +267,18 @@ def detect_ward(*texts: str | None) -> str | None:
 LOC_MARK = re.compile(r"t[oọ][aạ]\s*l[aạ]c(?:\s+t[aạ]i)?|đ[iị]a\s*ch[iỉ]\s+(?:th[uử]a\s*đ[aấ]t|t[aà]i\s*s[aả]n|nh[aà]\s*đ[aấ]t|"
                       r"b[aấ]t\s*đ[oộ]ng\s*s[aả]n|khu\s*đ[aấ]t|c[aă]n\s*nh[aà])|n[oơ]i\s*c[oó]\s*t[aà]i\s*s[aả]n|"
                       r"v[iị]\s*tr[ií]\s+(?:th[uử]a\s*đ[aấ]t|t[aà]i\s*s[aả]n|khu\s*đ[aấ]t)", re.I)
-NAY_RE = re.compile(r"\(\s*nay\s*(?:l[àa]|thu[ộo]c)\s*:?\s*([^)]+)\)|"
+NAY_RE = re.compile(r"\(\s*nay\s*(?:l[àa]|thu[ộo]c)\s*:?\s*([^)]+)(?:\)|$)|"
                     r"\bnay\s*(?:l[àa]|thu[ộo]c)\s*:?\s*([^;()\n]+?)(?=$|;|\n|\)|\(|\.\s)", re.I)
-PREV_RE = re.compile(r"\(\s*(?:tr[ưu][ớo]c\s*(?:đ[âa]y|kia)|c[ũu])\s*(?:l[àa]|thu[ộo]c)?\s*:?\s*[^)]*\)|"
+PREV_RE = re.compile(r"\(\s*(?:tr[ưu][ớo]c\s*(?:đ[âa]y|kia)|c[ũu])\s*(?:l[àa]|thu[ộo]c)?\s*:?\s*[^)]*(?:\)|$)|"
                      r"\([^()]*\bc[ũu]\s*\)", re.I)
+
+
+# "thị trấn Hưng Hà (trước sắp xếp)": tên ngay trước là tên CŨ
+OLDMARK_RE = re.compile(r"(?:xã|phường|thị trấn|đặc khu|p\.|x\.|tt\.)\s*[^,;()|\n]{1,40}?\s*\(\s*tr[ưu][ớo]c\s*(?:khi\s*)?"
+                        r"(?:s[ắa]p\s*x[ếe]p|s[áa]p\s*nh[ậa]p)[^)]*\)", re.I)
+# "Bản đồ địa chính phường Sầm Sơn chỉnh lý năm 2025" là TÊN BẢN ĐỒ, không phải nơi có tài sản
+CADASTRAL_RE = re.compile(r"b[ảa]n\s*đ[ồo]\s*(?:đ[ịi]a\s*ch[íi]nh)?\s*(?:xã|phường|thị trấn)\s+[^,;()|\n]{1,40}?"
+                          r"(?:\s*(?:ch[ỉi]nh\s*l[ýy]|đo\s*đ[ạa]c|l[ậa]p)[^,;()|\n]*?n[ăa]m\s*\d{4}|(?=[,;()|\n]))", re.I)
 
 
 def _nay_parts(text: str) -> list[str]:
@@ -311,10 +319,15 @@ def clause_location(text: str | None) -> Loc:
     loc = Loc()
     if not text:
         return loc
+    text = CADASTRAL_RE.sub(" ", text)
+    marked_old = bool(OLDMARK_RE.search(text))
+    text = OLDMARK_RE.sub(" ", text)
     nay = _nay_parts(text)
     if nay:
         new = list(dict.fromkeys(w for seg in nay for w in _wards(seg)))
         prov_text = " ".join(nay)
+    elif marked_old:
+        new, prov_text = _wards(PREV_RE.sub(" ", text)), PREV_RE.sub(" ", text)
     elif PREV_RE.search(text):
         new = _wards(PREV_RE.sub(" ", text))
         prov_text = PREV_RE.sub(" ", text)
@@ -403,7 +416,9 @@ _EXPLICIT_BEFORE = re.compile(r"(?:^|\s)(?:tinh|thanh pho|tp|t)\s$")
 def _provinces_in(t: str, prefer_explicit: bool = True) -> list[tuple[str, str]]:
     """Tỉnh/thành nhắc trong văn bản (đã quy đổi tên tỉnh cũ). Bỏ tên trùng tên xã/phường/huyện ("xã Bình Dương",
     "phường Khánh Hòa", "huyện Thạnh Hóa"); có tên đi sau chữ "tỉnh/thành phố" thì chỉ lấy các tên đó."""
-    norm = " " + re.sub(r"[\s,.\-;:()]+", " ", strip_accents(t or "")) + " "
+    norm = strip_accents(t or "")
+    norm = re.sub(r"\s*[,;()|\n]+\s*", " | ", norm)          # dấu ngắt: tên tỉnh không được "nối" qua dấu phẩy
+    norm = " " + re.sub(r"[\s.\-:]+", " ", norm) + " "
     taken: list[tuple[int, int]] = []
     found: list[tuple[int, str, str, bool]] = []
     for key, new, orig in _PKEYS:

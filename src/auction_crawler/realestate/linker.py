@@ -587,7 +587,7 @@ def _apply(s, prop: Property, members: list[Item], pn_all: dict, pn_by_prop: dic
         notes += [f"Tài liệu: {x}" for x in (m.doc or {}).get("notes") or []]
     if any((m.property_count or 1) > 1 for m in members):
         notes.append("Thông báo gồm nhiều tài sản, mỗi tài sản một giá – giá để trống (xem bảng tài sản), nhập tay nếu cần")
-    if not prop.province:
+    if not prop.province and prop.sale_form != "khoan_no":
         notes.append("Tin không ghi rõ tỉnh/thành nơi có tài sản")
     prop.auto_notes = list(dict.fromkeys(notes))[:12]
     prop.session_count = len(sessions)
