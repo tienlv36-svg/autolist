@@ -75,6 +75,8 @@ class Property(Base):
     auto_notes: Mapped[list[Any]] = mapped_column(JSON, default=list)   # lý do để trống (trích xuất thận trọng)
     field_sources: Mapped[dict[str, Any] | None] = mapped_column(JSON)  # trường lấy từ tài liệu: {tên: nguồn}
     loc_candidates: Mapped[list[Any] | None] = mapped_column(JSON)      # vị trí ứng viên khi xã/tỉnh còn trống
+    loc_multi: Mapped[str | None] = mapped_column(Text)                 # "Nhiều nơi: Xã A, Xã B – Tỉnh X; …"
+    loc_index: Mapped[str | None] = mapped_column(Text, index=True)     # "|Tỉnh X|Xã A|Xã B|" – lọc theo mọi nơi có TS
     address_manual: Mapped[str | None] = mapped_column(Text)
     land_area_manual: Mapped[float | None] = mapped_column(Float)
     residential_area_manual: Mapped[float | None] = mapped_column(Float)

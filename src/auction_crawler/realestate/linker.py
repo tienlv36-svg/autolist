@@ -93,7 +93,8 @@ class Item:
     info: RealEstateInfo
     property_count: int | None = None
     doc: dict | None = None
-    gcn: frozenset = frozenset()     # số giấy chứng nhận nhắc trong tin (vd "BR 234700")          # thông số trích từ file đính kèm (attachments.merge_file_infos)
+    gcn: frozenset = frozenset()     # số giấy chứng nhận nhắc trong tin (vd "BR 234700")
+    places: tuple = ()               # nơi có từng tài sản (thông báo nhiều tài sản: mỗi tài sản một nơi)          # thông số trích từ file đính kèm (attachments.merge_file_infos)
 
 
 class DSU:
@@ -131,8 +132,11 @@ def load_items(repo: Repository) -> list[Item]:
             NoticeRow.publish_date, NoticeRow.dup_group, NoticeRow.owner_address, NoticeRow.property_count,
             NoticeRow.doc_info)).all()
         assets: dict[int, list[str]] = defaultdict(list)
+        places: dict[int, list[str]] = defaultdict(list)
         for nid, name, place in s.execute(select(AssetRow.notice_id, AssetRow.name, AssetRow.place)):
             assets[nid].extend(x for x in (name, place) if x)
+            if place and not place_rejection(place):
+                places[nid].append(place)
     out = []
     for r in rows:
         cat = is_real_estate(r.asset_type, f"{r.title} {r.asset_name or ''}", r.official_type)
@@ -151,7 +155,9 @@ def load_items(repo: Repository) -> list[Item]:
                         plausible_dt(r.auction_date), plausible_dt(r.registration_end), plausible_dt(r.publish_date),
                         r.dup_group, cat, info,
                         r.property_count, r.doc_info if (r.property_count or 1) == 1 else None,
-                        frozenset(gcn_serials(f"{r.title} {r.asset_name or ''}"[:3000]))))
+                        frozenset(gcn_serials(f"{r.title} {r.asset_name or ''}"[:3000])),
+                        tuple(dict.fromkeys([*places.get(r.id, []), *(x.strip() for x in (address or "").split("|")
+                                                                       if x.strip())]))))
     return out
 
 
@@ -544,6 +550,41 @@ def _location(members: list[Item], known: dict, notes: list[str]) -> tuple[str |
     return pw, pp, srcs, uniq
 
 
+def _all_locations(prop: Property, members: list[Item]) -> tuple[str | None, str | None]:
+    """Tin bán NHIỀU tài sản ở nhiều nơi: liệt kê MỌI xã/phường, tỉnh (để lọc theo nơi nào cũng ra).
+    Trả (chuỗi hiển thị "Xã A, Xã B – Tỉnh X; …" khi nhiều nơi, chỉ mục "|Tỉnh|Xã A|…|" để lọc)."""
+    pairs: list[tuple[str | None, str | None]] = []
+    for m in members:
+        for pl in m.places:
+            loc = clause_location(pl)
+            for w in loc.wards or [None]:
+                if w or loc.province:
+                    pairs.append((w, loc.province))
+        if not m.places:
+            pairs += [(c.get("ward"), c.get("province")) for c in (m.info.loc_candidates or [])]
+    if prop.ward:
+        pairs = [(prop.ward, prop.province)]           # đã xác định một nơi
+    provs = list(dict.fromkeys(pv for _, pv in pairs if pv))
+    if len(provs) == 1:
+        pairs = [(w, pv or provs[0]) for w, pv in pairs]
+    elif prop.province and not provs:
+        pairs = [(w, prop.province) for w, _ in pairs]
+    by_prov: dict[str, dict[str, str]] = defaultdict(dict)
+    for w, pv in pairs:
+        d = by_prov[pv or ""]
+        if w:
+            d.setdefault(_core_ward(w), w)
+    names = {n for pv, d in by_prov.items() for n in (pv, *d.values()) if n}
+    if prop.province:
+        names.add(prop.province)
+    index = ("|" + "|".join(sorted(names)) + "|") if names else None
+    n_wards = sum(len(d) for d in by_prov.values())
+    if n_wards <= 1 and len([p for p in by_prov if p]) <= 1:
+        return None, index
+    text = "; ".join(f"{', '.join(d.values()) or '(xã chưa rõ)'} – {pv or 'tỉnh chưa rõ'}" for pv, d in by_prov.items())
+    return f"Nhiều nơi: {text}"[:500], index
+
+
 def _apply(s, prop: Property, members: list[Item], pn_all: dict, pn_by_prop: dict, known: dict | None = None) -> None:
     sessions = _sessions(members)
     existing = dict(pn_by_prop.get(prop.id, {}))
@@ -599,6 +640,7 @@ def _apply(s, prop: Property, members: list[Item], pn_all: dict, pn_by_prop: dic
             sources[f] = src
     sources.update(loc_src)
     prop.field_sources = sources
+    prop.loc_multi, prop.loc_index = _all_locations(prop, members)
     prop.loc_candidates = loc_cands[:8] if (prop.ward is None or prop.province is None) and loc_cands else None
     parcels = []
     for m in members:

@@ -220,3 +220,27 @@ def test_location_sources_auto_confirmed(env):  # noqa: F811
         assert d.ward is None and d.province == "Đồng Tháp"
     login(c, "nv1")
     assert "Xác nhận vị trí" not in c.get("/").text and c.get("/locations").status_code == 404
+
+
+def test_multi_asset_notice_lists_all_places_and_filters(env):  # noqa: F811
+    from auction_crawler.models import AssetItem
+    repo, c = env
+    when = datetime.now() + timedelta(days=12)
+    repo.upsert(AuctionNotice(
+        source="dgts", source_id="77", title="Bán 3 tài sản là quyền sử dụng đất của Ngân hàng X",
+        asset_name="3 thửa đất", asset_owner="Ngân hàng X", auction_date=when, registration_end=when,
+        asset_type="quyen_su_dung_dat", origin="ngan_hang_bao_dam", property_count=3,
+        assets=[AssetItem(name="Thửa 1", place="ấp 2, xã Thạnh Bình, tỉnh Tây Ninh", starting_price=1),
+                AssetItem(name="Thửa 2", place="ấp 5, xã Tân Thành, tỉnh Tây Ninh", starting_price=2),
+                AssetItem(name="Thửa 3", place="khóm 1, phường Mỹ Ngãi, tỉnh Đồng Tháp", starting_price=3)]))
+    rebuild(repo)
+    with repo.session() as s:
+        p = s.query(Property).filter(Property.title.contains("Bán 3 tài sản")).one()
+        assert p.ward is None and p.province is None
+        assert "Xã Thạnh Bình" in p.loc_multi and "Phường Mỹ Ngãi" in p.loc_multi and "Tây Ninh" in p.loc_multi
+    login(c)
+    for q in ("province=Tây+Ninh", "province=Đồng+Tháp", "province=Tây+Ninh&ward=Xã+Tân+Thành"):
+        assert "Bán 3 tài sản" in c.get("/?" + q).text, q
+    assert "Bán 3 tài sản" not in c.get("/?province=Hà+Nội").text
+    page = c.get("/?province=Đồng+Tháp").text
+    assert "Nhiều nơi:" in page

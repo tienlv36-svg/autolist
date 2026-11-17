@@ -32,8 +32,11 @@ MISSING = {
     "floor_area": ("Diện tích sàn (nhà + đất)", lambda: (eff("floor_area").is_(None), [Property.category == "nha_dat"])),
     "parcel": ("Số tờ / số thửa", lambda: (eff("parcel_no").is_(None), _LAND())),
     # khoản nợ (gói nợ ngân hàng) không có "vị trí" theo nghĩa BĐS -> không tính thiếu
-    "ward": ("Xã / phường", lambda: (eff("ward").is_(None), [Property.sale_form != "khoan_no"])),
-    "province": ("Tỉnh / thành phố", lambda: (eff("province").is_(None), [Property.sale_form != "khoan_no"])),
+    "ward": ("Xã / phường", lambda: (eff("ward").is_(None) & Property.loc_multi.is_(None),
+                                     [Property.sale_form != "khoan_no"])),
+    "province": ("Tỉnh / thành phố", lambda: (eff("province").is_(None) & (Property.loc_multi.is_(None) |
+                                                                           Property.loc_multi.contains("tỉnh chưa rõ")),
+                                             [Property.sale_form != "khoan_no"])),
     "price_first": ("Giá phiên 1 (tài sản nhiều phiên)", lambda: (eff("price_first").is_(None),
                                                                  [Property.session_count > 1])),
 }
@@ -108,10 +111,10 @@ def build_query(f: Filters, user_id: int):
         conds.append(Property.sale_form.in_(f.sale_form))
     if f.category:
         conds.append(Property.category.in_(f.category))
-    if f.province:
-        conds.append(eff("province") == f.province)
+    if f.province:      # tin nhiều tài sản ở nhiều nơi: khớp nếu MỘT trong các nơi đó thuộc tỉnh/xã đang lọc
+        conds.append(or_(eff("province") == f.province, Property.loc_index.contains(f"|{f.province}|")))
     if f.ward:
-        conds.append(eff("ward") == f.ward)
+        conds.append(or_(eff("ward") == f.ward, Property.loc_index.contains(f"|{f.ward}|")))
     if f.price_min is not None:
         conds.append(eff("price_latest") >= int(f.price_min * 1e9))
     if f.price_max is not None:

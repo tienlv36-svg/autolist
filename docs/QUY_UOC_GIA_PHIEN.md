@@ -130,6 +130,8 @@ rõ và chỉ một giá trị; file nhiều thửa/lô → không lấy.
 - “X (trước sắp xếp)”, “(… cũ)”, “(trước đây là …” (kể cả thiếu dấu đóng ngoặc) là tên cũ. Tên bản đồ (“Bản đồ địa chính
   phường A chỉnh lý năm 2025”) không phải nơi có tài sản. Tên tỉnh không được ghép qua dấu phẩy (“Hưng Hà, tỉnh Hưng
   Yên” không phải Hà Tĩnh).
+- **Thông báo bán nhiều tài sản ở nhiều nơi**: không để trống – phần mềm liệt kê **mọi xã/phường và tỉnh** (“Nhiều nơi:
+  Xã A, Xã B – Tỉnh X; Phường C – Tỉnh Y”); lọc theo tỉnh hoặc xã/phường nào trong số đó đều ra tài sản này.
 - **Khoản nợ**: vị trí và địa chỉ lấy theo **tài sản bảo đảm** (“tài sản bảo đảm / thế chấp là … tại xã Y, tỉnh Z”),
   không theo địa chỉ ngân hàng hay con nợ; địa chỉ hiện dạng “TSBĐ: …”. Nhiều tài sản bảo đảm ở nhiều nơi → để trống
   xã. Khoản nợ không tính vào số tài sản thiếu xã/phường, tỉnh.
