@@ -131,6 +131,9 @@ rõ và chỉ một giá trị; file nhiều thửa/lô → không lấy.
   phường A chỉnh lý năm 2025”) không phải nơi có tài sản. Tên tỉnh không được ghép qua dấu phẩy (“Hưng Hà, tỉnh Hưng
   Yên” không phải Hà Tĩnh).
 - **Khoản nợ** (gói nợ ngân hàng) không tính là thiếu xã/phường, tỉnh.
+- Tin **không nhắc xã/phường nào** mà người có tài sản là **UBND xã/phường X** (UBND xã chỉ bán tài sản trên địa bàn
+  mình): lấy xã/phường X, và tỉnh nếu tên đơn vị có ghi tỉnh; nhãn nguồn “đơn vị có tài sản (UBND xã)”. **Không** áp
+  dụng cho cơ quan thi hành án, ngân hàng hay đơn vị khác (có thể xử lý tài sản ở nơi khác).
 - Ô nơi có tài sản ghi chữ mẫu (“Nơi tài sản tọa lạc”, “tại nơi có tài sản”, “Chi tiết trong Bảng kê”) coi như trống.
 - Khi ô nơi có tài sản và cụm “tọa lạc tại…” không có vị trí, dùng tên/mô tả tài sản nếu chỉ có **một** xã/phường hoặc có
   nhãn “nay là”.

@@ -27,7 +27,7 @@ from ..normalize import plausible_dt, strip_accents
 from ..storage import AssetRow, NoticeRow, Repository
 from .db import Activity, Comment, FileView, Property, PropertyFile, PropertyNotice, Task
 from .history import gcn_serials
-from .extract import RealEstateInfo, extract, place_rejection, ward_key
+from .extract import RealEstateInfo, clause_location, extract, place_rejection, ward_key
 
 log = logging.getLogger(__name__)
 
@@ -455,6 +455,18 @@ def canon_ward(w: str | None, province: str | None, known: dict) -> str | None:
     return close[0] if len(close) == 1 else None
 
 
+_UBND_RE = re.compile(r"(?:ubnd|[uủ]y\s*ban\s*nh[âa]n\s*d[âa]n)\s+((?:xã|phường|thị trấn|đặc khu)\s+[^,;()|\n]+)", re.I)
+
+
+def commune_owner(owner: str | None) -> tuple[str | None, str | None]:
+    """Người có tài sản là "UBND xã/phường X[, tỉnh Y]" -> (Xã X, Y). Chỉ UBND cấp xã."""
+    m = _UBND_RE.search(owner or "")
+    if not m:
+        return None, None
+    loc = clause_location(owner[m.start(1):])
+    return (loc.wards[0] if loc.wards else None), loc.province
+
+
 def _location(members: list[Item], known: dict, notes: list[str]) -> tuple[str | None, str | None, dict, list]:
     """Xã/phường + tỉnh của tài sản. Nguồn: tin đăng (ô nơi có tài sản + cụm 'tọa lạc tại…') và file đính kèm.
     Tên '(nay là …)' thắng tên cũ; tài liệu chữ thắng tin đăng; OCR chỉ dùng khi đối chiếu được với tên đã biết.
@@ -520,6 +532,15 @@ def _location(members: list[Item], known: dict, notes: list[str]) -> tuple[str |
         if k not in seen and (c.get("ward") or c.get("province")):
             seen.add(k)
             uniq.append(c)
+    # tin không ghi xã/tỉnh nhưng người có tài sản là UBND cấp xã: UBND xã chỉ bán tài sản trên địa bàn mình -> lấy xã
+    # (và tỉnh nếu tên đơn vị ghi tỉnh). KHÔNG áp dụng cho cơ quan thi hành án (có thể xử lý tài sản ở nơi khác).
+    if pw is None or pp is None:
+        ow, op = commune_owner(recent[0].owner if recent else None)
+        if pw is None and ow and not any(m.info.wards_seen for m in members):
+            pw, srcs["ward"] = ow, "đơn vị có tài sản (UBND xã)"
+            notes.append(f"Xã/phường lấy theo người có tài sản: UBND {ow}")
+        if pp is None and op:
+            pp, srcs["province"] = op, "đơn vị có tài sản (UBND xã)"
     return pw, pp, srcs, uniq
 
 

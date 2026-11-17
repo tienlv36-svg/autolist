@@ -95,7 +95,8 @@ tự sửa trong `/root/autolist` (token GitHub trên VPS chỉ có quyền đ�
 - **Xã/phường, tỉnh** (bộ lọc quan trọng): lấy từ ô nơi có tài sản (trừ địa chỉ ngân hàng/cơ quan), cụm “tọa lạc tại…”
   trong mô tả và file đính kèm; tên “(nay là …)” thắng tên cũ; nguồn mâu thuẫn hoặc OCR không đối chiếu được → để
   tự chọn nguồn ưu tiên (tài liệu chữ > ô nơi có tài sản > “tọa lạc tại…” > tên tài sản; các phiên khác nhau → phiên gần
-  nhất); không có trang duyệt tay. Các vị trí đã gặp lưu ở `properties.loc_candidates`.
+  nhất); không có trang duyệt tay. Tin không nhắc xã nào mà người có tài sản là UBND xã X → xã X (không áp dụng cho thi
+  hành án). Các vị trí đã gặp lưu ở `properties.loc_candidates`.
 - Quy ước phiên, giá phiên 1, giá hiện tại, % giảm, quét lịch sử: `docs/QUY_UOC_GIA_PHIEN.md`.
 - Giá taisancong (OCR từ PDF) chỉ là tham khảo, không phải giá chính thức.
 - Số liệu tài sản (diện tích, tờ/thửa, kích thước) ưu tiên lấy từ file đính kèm; OCR khác tin đăng → để trống

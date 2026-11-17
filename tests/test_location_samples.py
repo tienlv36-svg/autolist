@@ -114,3 +114,32 @@ def test_province_name_not_joined_across_comma():
     from auction_crawler.realestate.extract import _provinces_in
     assert [n for n, _ in _provinces_in("xã Hưng Hà, tỉnh Hưng Yên")] == ["Hưng Yên"]
     assert [n for n, _ in _provinces_in("phường Long Hà, Tĩnh Gia")] == []
+
+
+def test_commune_owner_gives_ward_but_enforcement_office_does_not(tmp_path):
+    from datetime import datetime, timedelta
+
+    from auction_crawler.models import AuctionNotice
+    from auction_crawler.realestate.db import Property
+    from auction_crawler.realestate.linker import commune_owner, rebuild
+    from auction_crawler.storage import Repository
+    assert commune_owner("UBND xã Thượng Ninh, tỉnh Thanh Hóa") == ("Xã Thượng Ninh", "Thanh Hóa")
+    assert commune_owner("Ủy ban nhân dân phường Hòa Thành") == ("Phường Hòa Thành", None)
+    assert commune_owner("Chi cục Thi hành án dân sự tỉnh Nghệ An") == (None, None)
+    repo = Repository(f"sqlite:///{tmp_path}/c.db")
+    repo.init_db()
+    when = datetime.now() + timedelta(days=10)
+    for sid, owner, title in [("1", "UBND xã Thượng Ninh, tỉnh Thanh Hóa", "Quyền sử dụng đất công ích thửa đất số 5, tờ bản đồ số 2"),
+                              ("2", "Chi cục THADS tỉnh Nghệ An", "Quyền sử dụng đất thửa đất số 7, tờ bản đồ số 3"),
+                              ("3", "UBND xã Thượng Ninh, tỉnh Thanh Hóa", "Cho thuê đất thửa đất số 9, tờ bản đồ số 1 tại xã Yên Lạc, tỉnh Thanh Hóa")]:
+        repo.upsert(AuctionNotice(source="dgts", source_id=sid, title=title, asset_name=title, asset_owner=owner,
+                                  starting_price=100_000_000, auction_date=when, registration_end=when,
+                                  asset_type="quyen_su_dung_dat", origin="tai_san_cong", property_count=1))
+    rebuild(repo)
+    with repo.session() as s:
+        get = lambda n: s.query(Property).filter(Property.parcel_no == n).one()  # noqa: E731
+        a, b, c = get("5"), get("7"), get("9")
+        assert (a.ward, a.province) == ("Xã Thượng Ninh", "Thanh Hóa")
+        assert a.field_sources["ward"].startswith("đơn vị có tài sản")
+        assert (b.ward, b.province) == (None, None)               # thi hành án: không suy
+        assert c.ward == "Xã Yên Lạc"                              # tin ghi xã riêng -> theo tin, không theo đơn vị

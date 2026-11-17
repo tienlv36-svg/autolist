@@ -75,6 +75,7 @@ class RealEstateInfo:
     province_raw: str | None = None
     ward_new: bool = False                 # tên xã/phường lấy từ "(nay là ...)" (tên sau sắp xếp 2025)
     loc_candidates: list[dict] = field(default_factory=list)   # các vị trí khác nhau tìm thấy (để xác nhận 1 chạm)
+    wards_seen: bool = False               # tin có nhắc xã/phường nào không (kể cả khi để trống vì nhiều nơi)
     multi: bool = False                    # tin gồm nhiều thửa/lô
     session_hint: int | None = None
     has_house: bool = False
@@ -538,6 +539,7 @@ def extract(title: str, asset_name: str | None = None, address: str | None = Non
     if pv is None and not any(l.provinces for _, l in primary):
         pv = fb.province
     info.ward, info.ward_new, info.loc_candidates = w, w_new, cands
+    info.wards_seen = bool(w or cands or fb.wards or any(l.wards for _, l in primary))
     if len({ward_key(c["ward"]) for c in cands if c.get("ward")}) > 1:
         info.notes.append("Tin nhắc nhiều xã/phường – " + (f"chọn {w} theo nguồn ưu tiên" if w else
                                                           "nhiều tài sản ở nhiều nơi, để trống"))
