@@ -585,8 +585,11 @@ def _apply(s, prop: Property, members: list[Item], pn_all: dict, pn_by_prop: dic
         return uniq[0] if uniq else None
 
     prop.ward, prop.province, loc_src, loc_cands = _location(members, known or {}, notes)
-    prop.address = next((m.address for m in sorted(members, key=lambda x: x.auction_date or datetime.min,
-                                                   reverse=True) if m.address), None)
+    by_recent = sorted(members, key=lambda x: x.auction_date or datetime.min, reverse=True)
+    prop.address = next((m.address for m in by_recent if m.address), None)
+    if prop.sale_form == "khoan_no":            # khoản nợ: địa chỉ tài sản bảo đảm (ghi rõ) thay cho địa chỉ ngân hàng
+        prop.address = next((f"TSBĐ: {m.info.collateral_address}" for m in by_recent
+                             if m.info.collateral_address), prop.address)
     sources: dict[str, str] = {}
     for f, lbl in DOC_LABELS.items():
         portal = agree(lambda m, f=f: getattr(m.info, f), lbl)

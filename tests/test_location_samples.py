@@ -143,3 +143,40 @@ def test_commune_owner_gives_ward_but_enforcement_office_does_not(tmp_path):
         assert a.field_sources["ward"].startswith("đơn vị có tài sản")
         assert (b.ward, b.province) == (None, None)               # thi hành án: không suy
         assert c.ward == "Xã Yên Lạc"                              # tin ghi xã riêng -> theo tin, không theo đơn vị
+
+
+def test_debt_collateral_location_and_address():
+    t = ("Khoản nợ của Công ty TNHH Vạn Thắng (địa chỉ: số 5 Lê Lợi, phường Bến Thành, TP. Hồ Chí Minh) tại Agribank "
+         "Chi nhánh 10. Tài sản bảo đảm là quyền sử dụng đất thửa đất số 120, tờ bản đồ số 7 tại ấp 3, xã Mỹ Yên, "
+         "tỉnh Tây Ninh theo giấy chứng nhận số CS 123456")
+    info = extract("Bán khoản nợ của Công ty TNHH Vạn Thắng", t, "Agribank Chi nhánh 10, TP. Hồ Chí Minh",
+                   asset_type="khoan_no")
+    assert info.sale_form == "khoan_no"
+    assert (info.ward, info.province) == ("Xã Mỹ Yên", "Tây Ninh")
+    assert info.collateral_address == "ấp 3, xã Mỹ Yên, tỉnh Tây Ninh"
+    two = t + "; và tài sản bảo đảm là nhà đất tại phường 2, thành phố Tân An, tỉnh Long An"
+    info2 = extract("Bán khoản nợ", two, None, asset_type="khoan_no")
+    assert info2.ward is None and info2.collateral_address is None and info2.province == "Tây Ninh"
+
+
+def test_debt_property_shows_collateral_address(tmp_path):
+    from datetime import datetime, timedelta
+
+    from auction_crawler.models import AuctionNotice
+    from auction_crawler.realestate.db import Property
+    from auction_crawler.realestate.linker import rebuild
+    from auction_crawler.storage import Repository
+    repo = Repository(f"sqlite:///{tmp_path}/d.db")
+    repo.init_db()
+    t = ("Khoản nợ của bà Lê Thị C tại BIDV. Tài sản bảo đảm là quyền sử dụng đất thửa đất số 12, tờ bản đồ số 3 "
+         "tại thôn 2, xã Ka Đô, tỉnh Lâm Đồng theo giấy chứng nhận số BK 778899")
+    when = datetime.now() + timedelta(days=9)
+    repo.upsert(AuctionNotice(source="dgts", source_id="1", title="Bán khoản nợ của bà Lê Thị C", asset_name=t,
+                              address="BIDV chi nhánh Lâm Đồng", asset_owner="BIDV", starting_price=500_000_000,
+                              auction_date=when, registration_end=when, asset_type="khoan_no",
+                              origin="ngan_hang_bao_dam", property_count=1))
+    rebuild(repo)
+    with repo.session() as s:
+        p = s.query(Property).one()
+        assert p.sale_form == "khoan_no" and (p.ward, p.province) == ("Xã Ka Đô", "Lâm Đồng")
+        assert p.address == "TSBĐ: thôn 2, xã Ka Đô, tỉnh Lâm Đồng"

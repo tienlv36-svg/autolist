@@ -75,6 +75,7 @@ class RealEstateInfo:
     province_raw: str | None = None
     ward_new: bool = False                 # tên xã/phường lấy từ "(nay là ...)" (tên sau sắp xếp 2025)
     loc_candidates: list[dict] = field(default_factory=list)   # các vị trí khác nhau tìm thấy (để xác nhận 1 chạm)
+    collateral_address: str | None = None  # khoản nợ: địa chỉ tài sản bảo đảm (ghi rõ, một nơi)
     wards_seen: bool = False               # tin có nhắc xã/phường nào không (kể cả khi để trống vì nhiều nơi)
     multi: bool = False                    # tin gồm nhiều thửa/lô
     session_hint: int | None = None
@@ -361,6 +362,29 @@ def asset_location(text: str | None) -> Loc:
     return clause_location(" ; ".join(clauses))
 
 
+COLLATERAL_RE = re.compile(r"t[àa]i\s*s[ảa]n\s*(?:b[ảa]o\s*đ[ảa]m|th[ếe]\s*ch[ấa]p|c[ầa]m\s*c[ốo])|\btsbđ\b|\btsđb\b", re.I)
+_AT_RE = re.compile(r"(?:t[ọo][aạ]\s*l[aạ]c\s*)?\bt[ạa]i\s*:?\s*((?:(?!\bt[ạa]i\b).){5,220}?)"
+                    r"(?=;|\.\s|\.$|$|\s+theo\s|\s+thu[ộo]c\s+quy[ềe]n|\s+do\s|\s+đ[ãa]\s+đ[ưu][ợo]c|\s+gi[ấa]y\s+ch[ứu]ng)",
+                    re.I | re.S)
+
+
+def collateral_location(text: str | None) -> tuple[Loc, str | None]:
+    """Khoản nợ: vị trí TÀI SẢN BẢO ĐẢM ("tài sản bảo đảm là QSDĐ thửa … tại xã Y, tỉnh Z …").
+    Trả (vị trí, địa chỉ ghi rõ) – địa chỉ chỉ khi đúng MỘT nơi."""
+    if not text:
+        return Loc(), None
+    segs = [text[m.end():m.end() + 600] for m in COLLATERAL_RE.finditer(text)]
+    if not segs:
+        return Loc(), None
+    seg = " ; ".join(segs)
+    loc = asset_location(seg)
+    if not (loc.wards or loc.provinces):
+        loc = clause_location(seg)
+    addrs = list(dict.fromkeys(re.sub(r"\s+", " ", m.group(1)).strip(" ,.") for m in _AT_RE.finditer(seg)
+                               if _wards(m.group(1)) or _provinces_in(m.group(1))))
+    return loc, (addrs[0][:300] if len(addrs) == 1 and loc.ward else None)
+
+
 def pick_location(sources: list[tuple[str, Loc]]) -> tuple[str | None, bool, str | None, list[dict]]:
     """Chọn xã/phường + tỉnh từ nhiều nguồn (xếp theo độ ưu tiên: ô nơi có tài sản → cụm "tọa lạc tại…").
     Tên mới có nhãn ("nay là …") thắng tên cũ. Các nguồn cùng thời kỳ ghi KHÁC nhau -> TỰ CHỌN nguồn ưu tiên cao nhất
@@ -527,8 +551,13 @@ def extract(title: str, asset_name: str | None = None, address: str | None = Non
     _dimensions(norm, info)
     # vị trí: (1) ô nơi có tài sản, (2) cụm "tọa lạc tại…/địa chỉ thửa đất…" trong mô tả – phải khớp nhau;
     # (3) dự phòng: tên/mô tả tài sản (khi 1–2 không có), chỉ nhận khi duy nhất hoặc có nhãn "nay là"
-    primary = [(s, l) for s, l in (("nơi có tài sản", clause_location(address)), ("mô tả tài sản", asset_location(text)))
-               if l.wards or l.provinces]
+    srcs = [("nơi có tài sản", clause_location(address)), ("mô tả tài sản", asset_location(text))]
+    if info.sale_form == "khoan_no":
+        # khoản nợ: nơi có tài sản = nơi có TÀI SẢN BẢO ĐẢM (ô "nơi có tài sản" thường là địa chỉ ngân hàng/con nợ)
+        cl, info.collateral_address = collateral_location(text)
+        if cl.wards or cl.provinces:
+            srcs = [("tài sản bảo đảm", cl)]
+    primary = [(s, l) for s, l in srcs if l.wards or l.provinces]
     fb = clause_location(f"{asset_name or ''}\n{title}" if asset_name and title not in (asset_name or "") else
                          (asset_name or title))
     w, w_new, pv, cands = pick_location(primary) if primary else (None, False, None, [])

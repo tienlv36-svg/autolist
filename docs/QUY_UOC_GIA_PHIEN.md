@@ -130,7 +130,9 @@ rõ và chỉ một giá trị; file nhiều thửa/lô → không lấy.
 - “X (trước sắp xếp)”, “(… cũ)”, “(trước đây là …” (kể cả thiếu dấu đóng ngoặc) là tên cũ. Tên bản đồ (“Bản đồ địa chính
   phường A chỉnh lý năm 2025”) không phải nơi có tài sản. Tên tỉnh không được ghép qua dấu phẩy (“Hưng Hà, tỉnh Hưng
   Yên” không phải Hà Tĩnh).
-- **Khoản nợ** (gói nợ ngân hàng) không tính là thiếu xã/phường, tỉnh.
+- **Khoản nợ**: vị trí và địa chỉ lấy theo **tài sản bảo đảm** (“tài sản bảo đảm / thế chấp là … tại xã Y, tỉnh Z”),
+  không theo địa chỉ ngân hàng hay con nợ; địa chỉ hiện dạng “TSBĐ: …”. Nhiều tài sản bảo đảm ở nhiều nơi → để trống
+  xã. Khoản nợ không tính vào số tài sản thiếu xã/phường, tỉnh.
 - Tin **không nhắc xã/phường nào** mà người có tài sản là **UBND xã/phường X** (UBND xã chỉ bán tài sản trên địa bàn
   mình): lấy xã/phường X, và tỉnh nếu tên đơn vị có ghi tỉnh; nhãn nguồn “đơn vị có tài sản (UBND xã)”. **Không** áp
   dụng cho cơ quan thi hành án, ngân hàng hay đơn vị khác (có thể xử lý tài sản ở nơi khác).
