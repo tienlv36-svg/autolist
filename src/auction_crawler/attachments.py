@@ -291,31 +291,74 @@ def asset_section(text: str) -> str:
 
 
 _PRICE_RE = re.compile(r"gia\s*khoi\s*diem[^0-9]{0,80}?(\d{1,3}(?:[.,]\d{3}){2,})")
+_WORDS_RE = re.compile(r"^\s*(?:dong|vnd|d\b)?[^a-z]{0,15}\(?\s*(?:bang\s*chu|viet\s*bang\s*chu)\s*:?\s*([a-z\s,.-]{5,220}?)\s*(?:dong|vnd|\))")
+_DIGITS = {"khong": 0, "mot": 1, "hai": 2, "ba": 3, "bon": 4, "tu": 4, "nam": 5, "lam": 5, "nham": 5, "sau": 6,
+           "bay": 7, "tam": 8, "chin": 9}
+_SCALES = {"nghin": 1_000, "ngan": 1_000, "trieu": 1_000_000, "ty": 1_000_000_000, "ti": 1_000_000_000}
+
+
+def words_to_number(s: str) -> int | None:
+    """"chín tỷ sáu trăm ba mươi triệu" -> 9630000000 (chữ đã bỏ dấu). Không hiểu được -> None."""
+    total = group = 0
+    pend: int | None = None
+    seen = False
+    for w in re.findall(r"[a-z]+", strip_accents(s or "")):
+        if w in _DIGITS:
+            pend, seen = _DIGITS[w], True
+        elif w == "muoi":
+            group += (pend if pend is not None else 1) * 10
+            pend, seen = None, True
+        elif w == "tram":
+            group += (pend or 0) * 100
+            pend = None
+        elif w in ("linh", "le", "chan", "va"):
+            continue
+        elif w in _SCALES:
+            group += pend or 0
+            total += (group or 1) * _SCALES[w]
+            group, pend = 0, None
+        else:
+            return None                               # từ lạ (OCR sai) -> không tin
+    if not seen:
+        return None
+    return total + group + (pend or 0)
 
 
 def labeled_starting_prices(text: str) -> set[int]:
     """Các số tiền đứng ngay sau nhãn "giá khởi điểm" (từ 1 triệu trở lên)."""
-    out = set()
-    for m in _PRICE_RE.finditer(strip_accents(text or "")):
+    return {v for v, _ in labeled_prices_with_words(text)}
+
+
+def labeled_prices_with_words(text: str) -> list[tuple[int, int | None]]:
+    """[(số, số đọc từ "Bằng chữ: …" ngay sau, nếu có)] của các giá khởi điểm."""
+    norm = strip_accents(text or "")
+    out = []
+    for m in _PRICE_RE.finditer(norm):
         v = int(re.sub(r"\D", "", m.group(1)))
-        if v >= 1_000_000:
-            out.add(v)
+        if v < 1_000_000:
+            continue
+        wm = _WORDS_RE.search(norm[m.end():m.end() + 260])
+        out.append((v, words_to_number(wm.group(1)) if wm else None))
     return out
 
 
 def doc_price(doc: dict | None, portal: int | None, property_count: int | None = 1) -> tuple[int | None, str | None]:
-    """Giá khởi điểm của MỘT phiên: giá trên cổng, trừ khi file thông báo (đọc được chữ, không phải OCR) ghi rõ MỘT giá
-    khởi điểm khác -> dùng giá trong thông báo. Trả (giá, ghi chú)."""
+    """Giá khởi điểm của MỘT phiên: giá trên cổng, trừ khi file thông báo ghi rõ MỘT giá khởi điểm khác -> dùng giá trong
+    thông báo. File đọc được chữ: tin luôn. Bản scan (OCR): tin khi số và phần "Bằng chữ" khớp nhau. Trả (giá, ghi chú)."""
     if (property_count or 1) != 1 or not doc or doc.get("multi"):
         return portal, None
     v = doc.get("starting_price")
+    words = doc.get("starting_price_words")
     if not v or (portal and abs(v - portal) <= 0.01 * portal):
         return portal, None
+    if portal and words and abs(words - portal) <= 0.01 * portal:
+        return portal, None                           # OCR đọc nhầm chữ số, phần bằng chữ khớp giá cổng -> cổng đúng
     method = (doc.get("methods") or {}).get("starting_price", "ocr")
     from .web.fmt import money
-    if method != "ocr":
-        return v, (f"Giá trên cổng ({money(portal)}) khác giá ghi trong thông báo ({money(v)}) – dùng giá trong thông báo"
-                   if portal else None)
+    if method != "ocr" or (words and words == v):
+        how = "" if method != "ocr" else " (bản scan, số và chữ khớp nhau)"
+        return v, (f"Giá trên cổng ({money(portal)}) khác giá ghi trong thông báo ({money(v)}){how} – dùng giá trong "
+                   f"thông báo" if portal else None)
     return portal, (f"Thông báo (OCR) ghi giá khởi điểm {money(v)}, khác giá trên cổng {money(portal)} – kiểm tra"
                     if portal else None)
 
@@ -331,9 +374,12 @@ def info_from_text(text: str) -> dict[str, Any]:
         if info.notes:
             out["notes"] = info.notes[:5]
     if not out.get("multi"):
-        prices = labeled_starting_prices(text)
-        if len(prices) == 1:                      # đúng MỘT giá khởi điểm ghi rõ trong văn bản
-            out["starting_price"] = prices.pop()
+        found = labeled_prices_with_words(text)
+        if len({v for v, _ in found}) == 1:       # đúng MỘT giá khởi điểm ghi rõ trong văn bản
+            out["starting_price"] = found[0][0]
+            words = {w for _, w in found if w}
+            if len(words) == 1:
+                out["starting_price_words"] = words.pop()
         # vị trí: cụm "tọa lạc tại / địa chỉ thửa đất / nơi có tài sản …" trong TOÀN văn bản (giữ dấu tiếng Việt)
         loc = asset_location(text)
         if loc.ward:
@@ -351,7 +397,7 @@ def merge_file_infos(infos: list[tuple[dict, str]]) -> dict[str, Any]:
         out["multi"] = True
         out["notes"].append("Tài liệu gồm nhiều thửa/lô – không lấy số liệu từ tài liệu")
         return out
-    for f in (*DOC_FIELDS, "ward", "province", "starting_price"):
+    for f in (*DOC_FIELDS, "ward", "province", "starting_price", "starting_price_words"):
         vals = [(i[f], m) for i, m in infos if i.get(f) not in (None, "")]
         if not vals:
             continue

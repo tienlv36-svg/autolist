@@ -131,7 +131,7 @@ def test_fetch_docs_saves_files_and_prefers_document(env, monkeypatch):
     assert reparse(repo, s) == 3
 
 
-def test_ocr_value_conflicting_with_portal_is_blanked(env):
+def test_ocr_value_conflicting_with_portal_uses_portal(env):
     s, repo = env
     with repo.Session.begin() as ss:
         n = ss.query(NoticeRow).filter(NoticeRow.source_id == "11").one()
@@ -140,9 +140,9 @@ def test_ocr_value_conflicting_with_portal_is_blanked(env):
     rebuild(repo)
     with repo.session() as ss:
         p = ss.query(Property).filter(Property.parcel_no == "156").one()
-        assert p.land_area is None and p.floor_area == 210
-        assert p.field_sources == {"floor_area": "tài liệu (OCR)"}
-        assert any("OCR" in x for x in p.auto_notes)
+        assert p.land_area == 118 and p.floor_area == 210            # OCR khác tin đăng -> dùng tin đăng
+        assert p.field_sources.get("floor_area") == "tài liệu (OCR)" and "land_area" not in p.field_sources
+        assert any("dùng tin đăng" in x for x in p.auto_notes)
     with repo.Session.begin() as ss:
         ss.query(NoticeRow).filter(NoticeRow.source_id == "11").one().doc_info = {
             "land_area": 120.5, "methods": {"land_area": "text"}}
@@ -384,3 +384,25 @@ def test_document_price_overrides_wrong_portal_price():
     assert doc_price(doc, 9_630_000_000) == (9_630_000_000, None)
     two = txt + "\\nLô 2: Giá khởi điểm: 4.635.000.000 đồng"
     assert "starting_price" not in info_from_text(two)               # 2 giá khác nhau -> không lấy
+
+
+def test_words_to_number_and_ocr_price_confirmed_by_words():
+    from auction_crawler.attachments import doc_price, info_from_text, words_to_number
+    assert words_to_number("Chín tỷ sáu trăm ba mươi triệu") == 9_630_000_000
+    assert words_to_number("Một tỷ không trăm hai mươi lăm triệu năm trăm nghìn") == 1_025_500_000
+    assert words_to_number("Mười hai tỷ đồng chẵn".replace(" đồng", "")) == 12_000_000_000
+    assert words_to_number("Bốn trăm linh năm triệu") == 405_000_000
+    assert words_to_number("Chín tỷ sáu trăm ba mươi triệu x9q") is None
+    txt = ("Tên tài sản: Quyền sử dụng đất thửa đất số 5, tờ bản đồ số 2. Giá khởi điểm: 9.630.000.000 đồng "
+           "(Bằng chữ: Chín tỷ sáu trăm ba mươi triệu đồng). Tiền đặt trước: 1.926.000.000 đồng")
+    info = info_from_text(txt)
+    assert info["starting_price"] == 9_630_000_000 and info["starting_price_words"] == 9_630_000_000
+    ocr_ok = {"starting_price": 9_630_000_000, "starting_price_words": 9_630_000_000,
+              "methods": {"starting_price": "ocr"}}
+    price, note = doc_price(ocr_ok, 4_635_000_000)
+    assert price == 9_630_000_000 and "số và chữ khớp" in note       # bản scan, số = chữ -> tự sửa giá
+    misread = {"starting_price": 9_680_000_000, "starting_price_words": 9_630_000_000,
+               "methods": {"starting_price": "ocr"}}
+    assert doc_price(misread, 9_630_000_000) == (9_630_000_000, None)  # OCR nhầm chữ số, phần chữ khớp cổng -> cổng
+    unsure = {"starting_price": 9_680_000_000, "methods": {"starting_price": "ocr"}}
+    assert doc_price(unsure, 4_635_000_000)[0] == 4_635_000_000       # không có phần chữ -> chỉ cảnh báo

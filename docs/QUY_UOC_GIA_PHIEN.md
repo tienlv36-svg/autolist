@@ -106,11 +106,13 @@ rõ và chỉ một giá trị; file nhiều thửa/lô → không lấy.
 |---|---|
 | Tài liệu có số liệu, tin đăng không có | Dùng số trong tài liệu, nhãn **“từ tài liệu”** (hoặc **“từ tài liệu (OCR)”**) |
 | Tài liệu (đọc chữ) khác tin đăng | **Dùng số trong tài liệu**, ghi chú chênh lệch |
-| Tài liệu đọc bằng **OCR** khác tin đăng | **Để trống** (OCR có thể đọc nhầm số), ghi chú – kiểm tra file rồi nhập tay |
+| Tài liệu đọc bằng **OCR** khác tin đăng | **Dùng tin đăng** (OCR có thể đọc nhầm số), ghi chú |
 | Các file / các phiên ghi khác nhau | Để trống, ghi chú |
 | Tin hoặc tài liệu gồm nhiều thửa/lô | Không dùng số liệu tài liệu |
 
-**Giá** vẫn theo mục 1–2 (giá chính thức nguồn đăng); giá đọc từ PDF chỉ để tham khảo. Giá trị **nhập tay** luôn
+**Giá:** mặc định giá chính thức trên cổng; nếu file thông báo ghi rõ MỘT giá khởi điểm khác (file đọc được chữ, hoặc
+bản scan mà số và phần “Bằng chữ” khớp nhau) → **dùng giá trong thông báo** (cổng nhập sai), nhãn “theo thông báo”.
+Bản scan không đối chiếu được thì chỉ gắn nhãn “kiểm tra”. Giá trị **nhập tay** luôn
 được ưu tiên. Trên trang chi tiết: mục *“File đính kèm đã lưu trên máy chủ”* (mở file, xem chữ đã đọc); file nguồn
 đã lưu được mở từ máy chủ kể cả khi website nguồn gỡ.
 

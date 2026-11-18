@@ -427,7 +427,7 @@ def _doc_value(members: list[Item], f: str, label: str, portal, notes: list[str]
     """Giá trị 1 trường, ƯU TIÊN file đính kèm (xem docs/QUY_UOC_GIA_PHIEN.md mục 5):
     - tài liệu các phiên ghi khác nhau -> để trống;
     - tài liệu đọc từ lớp chữ (PDF chữ/.docx) -> dùng, kể cả khi khác tin đăng (ghi chú chênh lệch);
-    - tài liệu đọc bằng OCR mà khác tin đăng -> để trống (OCR có thể đọc nhầm số), cần kiểm tra tay;
+    - tài liệu đọc bằng OCR mà khác tin đăng -> dùng tin đăng (OCR có thể đọc nhầm số), ghi chú;
     - không có tài liệu -> giá trị từ tin đăng.  Trả (giá trị, nguồn) với nguồn 'tài liệu' | 'tài liệu (OCR)' | None."""
     if any(m.info.multi for m in members):
         return portal, None                          # tin nhiều thửa/lô: không ghép số liệu tài liệu
@@ -441,9 +441,9 @@ def _doc_value(members: list[Item], f: str, label: str, portal, notes: list[str]
         return None, None
     method = "text" if any(mm == "text" for _, mm in docs) else "ocr"
     if portal not in (None, "") and not _same(v, portal):
-        if method == "ocr":
-            notes.append(f"Tài liệu (OCR) và tin đăng ghi {label} khác nhau – để trống, kiểm tra tay")
-            return None, None
+        if method == "ocr":                       # OCR có thể đọc nhầm số -> dùng số trên tin đăng (gõ tay, chính xác)
+            notes.append(f"Tài liệu (OCR) ghi {label} {v}, tin đăng ghi {portal} – dùng tin đăng")
+            return portal, None
         notes.append(f"Tin đăng ghi {label} {portal}, tài liệu ghi {v} – dùng số trong tài liệu")
     return v, "tài liệu" if method == "text" else "tài liệu (OCR)"
 
