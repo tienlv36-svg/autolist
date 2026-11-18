@@ -217,7 +217,7 @@ def test_ocr_stops_after_asset_section(monkeypatch, tmp_path):
 def test_compress_scanned_pdf(tmp_path):
     import random
 
-    from PIL import Image
+    Image = pytest.importorskip("PIL.Image")          # PIL chỉ cần cho bài kiểm tra này (VPS không cài)
 
     from auction_crawler.attachments import compress_pdf
     im = Image.new("L", (2480, 3508), 245)
