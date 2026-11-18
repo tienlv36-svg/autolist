@@ -269,8 +269,10 @@ def detect_ward(*texts: str | None) -> str | None:
 LOC_MARK = re.compile(r"t[oọ][aạ]\s*l[aạ]c(?:\s+t[aạ]i)?|đ[iị]a\s*ch[iỉ]\s+(?:th[uử]a\s*đ[aấ]t|t[aà]i\s*s[aả]n|nh[aà]\s*đ[aấ]t|"
                       r"b[aấ]t\s*đ[oộ]ng\s*s[aả]n|khu\s*đ[aấ]t|c[aă]n\s*nh[aà])|n[oơ]i\s*c[oó]\s*t[aà]i\s*s[aả]n|"
                       r"v[iị]\s*tr[ií]\s+(?:th[uử]a\s*đ[aấ]t|t[aà]i\s*s[aả]n|khu\s*đ[aấ]t)", re.I)
-NAY_RE = re.compile(r"\(\s*nay\s*(?:l[àa]|thu[ộo]c)\s*:?\s*([^)]+)(?:\)|$)|"
-                    r"\bnay\s*(?:l[àa]|thu[ộo]c)\s*:?\s*([^;()\n]+?)(?=$|;|\n|\)|\(|\.\s)", re.I)
+_ADMIN_AHEAD = r"(?=(?:xã|phường|thị\s*trấn|đặc\s*khu|tổ|thôn|khu|ấp|khóm|số|tdp|p\.|x\.)\b)"
+NAY_RE = re.compile(r"\(\s*nay\s*(?:(?:l[àa]|thu[ộo]c)\s*:?\s*|" + _ADMIN_AHEAD + r")([^)]+)(?:\)|$)|"
+                    r"(?<!hiện )(?<!đến )(?<!từ )\bnay\s*(?:(?:l[àa]|thu[ộo]c)\s*:?\s*|" + _ADMIN_AHEAD + r")"
+                    r"([^;()\n]+?)(?=$|;|\n|\)|\(|\.\s)", re.I)
 PREV_RE = re.compile(r"\(\s*(?:tr[ưu][ớo]c\s*(?:đ[âa]y|kia)|c[ũu])\s*(?:l[àa]|thu[ộo]c)?\s*:?\s*[^)]*(?:\)|$)|"
                      r"\([^()]*\bc[ũu]\s*\)", re.I)
 

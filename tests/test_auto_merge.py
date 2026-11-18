@@ -90,3 +90,32 @@ def test_old_town_name_vs_new_commune_name_merged(repo):
     add(repo, "2", b, 630_000_000, 50, owner="Phòng THADS khu vực 5 TP Đà Nẵng")
     rebuild(repo)
     assert props(repo) == [(2, 700_000_000, 630_000_000)]
+
+
+def test_price_ratio_over_5x_never_merged(repo):
+    t = "Quyền sử dụng đất thửa đất số 88, tờ bản đồ số 4, diện tích 120m2 tọa lạc tại xã Mỹ Yên, tỉnh Tây Ninh"
+    add(repo, "1", t, 3_900_000_000, 0)
+    add(repo, "2", t, 305_800_000_000, 60)       # cùng tờ/thửa, diện tích nhưng giá gấp 78 lần -> không gộp
+    rebuild(repo)
+    assert len(props(repo)) == 2
+
+
+def test_machine_pinned_links_split_on_price_ratio_but_user_merge_kept(repo):
+    from auction_crawler.realestate.db import PropertyNotice
+    add(repo, "1", "Căn hộ tầng 5 chung cư F-Home, phường Hải Châu, TP Đà Nẵng", 3_900_000_000, 0)
+    add(repo, "2", "Toàn bộ tòa nhà F-Home 20 tầng, phường Hải Châu, TP Đà Nẵng", 305_800_000_000, 30)
+    rebuild(repo)
+    with repo.Session.begin() as s:                 # giả lập: máy (quét lịch sử) từng khoá 2 tin vào cùng tài sản
+        pns = s.query(PropertyNotice).all()
+        pid = pns[0].property_id
+        for pn in pns:
+            pn.property_id, pn.manual, pn.link_source = pid, True, "history"
+    rebuild(repo)
+    assert len(props(repo)) == 2                    # máy khoá nhầm, giá chênh 78 lần -> tự tách
+    with repo.Session.begin() as s:                 # người dùng chủ động gộp -> tôn trọng
+        pns = s.query(PropertyNotice).all()
+        pid = pns[0].property_id
+        for pn in pns:
+            pn.property_id, pn.manual, pn.link_source = pid, True, "manual"
+    rebuild(repo)
+    assert len(props(repo)) == 1

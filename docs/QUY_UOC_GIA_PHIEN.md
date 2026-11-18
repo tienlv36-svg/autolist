@@ -122,7 +122,7 @@ rõ và chỉ một giá trị; file nhiều thửa/lô → không lấy.
 | Cụm **“tọa lạc tại…”, “địa chỉ thửa đất/tài sản…”, “vị trí thửa đất…”, “nơi có tài sản…”** trong mô tả | Dùng. Không dùng “địa chỉ: …” trơn (thường là chỗ ở của chủ tài sản) |
 | **File đính kèm** | Đọc chữ (PDF chữ/.docx): **ưu tiên nhất**, khác tin đăng thì dùng tài liệu. OCR: chỉ dùng khi tên xã/phường **đối chiếu được** với tên đã biết trong cùng tỉnh (trùng khi bỏ dấu, hoặc sai đúng 1 ký tự) |
 
-- Tên **mới có nhãn thắng tên cũ**: phần sau “nay là / nay thuộc” (có hoặc không có ngoặc), hoặc phần ngoài ngoặc khi
+- Tên **mới có nhãn thắng tên cũ**: phần sau “nay là / nay thuộc / nay xã… / nay phường…” (có hoặc không có ngoặc), hoặc phần ngoài ngoặc khi
   trong ngoặc ghi “(trước đây là …)”; tên cũ khác tên mới không coi là mâu thuẫn. Tên tỉnh cũ được quy đổi theo Nghị
   quyết sáp nhập.
 - Tên tỉnh trùng tên xã/phường/huyện (“xã Bình Dương, tỉnh Gia Lai”, “phường Khánh Hòa, TP Cần Thơ”, “huyện Thạnh Hóa”)
@@ -160,7 +160,8 @@ Ngoài các cách ở mục 1, phần mềm **tự gộp** hai tin là cùng m�
 Tờ/thửa, diện tích lấy cả từ file đính kèm khi tin đăng không ghi. Xã/phường so phần tên (“thị trấn Thạnh Mỹ” và “xã
 Thạnh Mỹ” là một). **Không gộp** khi: tờ/thửa, diện tích (lệch > 1%) hoặc xã/phường cùng thời kỳ tên gọi mâu thuẫn; hai tin
 **cùng ngày đấu giá** mà không trùng tờ/thửa hay số GCN (thường là các lô khác nhau của một cuộc); phiên sau đắt hơn
-phiên trước > 5% mà không có tờ/thửa/GCN trùng; tin nhiều thửa/lô. Gộp sai → bấm **Tách** ở phiên đó (giữ cố định).
+phiên trước > 5% mà không có tờ/thửa/GCN trùng; tin nhiều thửa/lô; **giá khởi điểm giữa các phiên chênh nhau hơn 5 lần**
+(kể cả các liên kết máy tự khoá khi quét lịch sử – sẽ tự tách; chỉ liên kết người dùng tự gộp mới được giữ). Gộp sai → bấm **Tách** ở phiên đó (giữ cố định).
 
 ## 8. Việc của người dùng
 

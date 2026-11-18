@@ -97,14 +97,20 @@ class Item:
     places: tuple = ()               # nơi có từng tài sản (thông báo nhiều tài sản: mỗi tài sản một nơi)          # thông số trích từ file đính kèm (attachments.merge_file_infos)
 
 
+MAX_PRICE_RATIO = 5      # một tài sản không thể có giá khởi điểm chênh nhau quá 5 lần giữa các phiên
+
+
 class DSU:
     def __init__(self) -> None:
         self.p: dict[int, int] = {}
         self.lock: dict[int, int | None] = {}   # root -> property_id bị khoá thủ công
+        self.lo: dict[int, int | None] = {}      # root -> giá thấp nhất / cao nhất trong cụm
+        self.hi: dict[int, int | None] = {}
 
-    def add(self, x: int, locked: int | None) -> None:
+    def add(self, x: int, locked: int | None, price: int | None = None) -> None:
         self.p[x] = x
         self.lock[x] = locked
+        self.lo[x] = self.hi[x] = price or None
 
     def find(self, x: int) -> int:
         while self.p[x] != x:
@@ -112,15 +118,21 @@ class DSU:
             x = self.p[x]
         return x
 
-    def union(self, a: int, b: int) -> None:
+    def union(self, a: int, b: int, check_price: bool = True) -> bool:
         ra, rb = self.find(a), self.find(b)
         if ra == rb:
-            return
+            return True
         la, lb = self.lock[ra], self.lock[rb]
         if la and lb and la != lb:
-            return  # hai tài sản người dùng đã tách riêng -> không gộp
+            return False  # hai tài sản người dùng đã tách riêng -> không gộp
+        los = [v for v in (self.lo[ra], self.lo[rb]) if v]
+        his = [v for v in (self.hi[ra], self.hi[rb]) if v]
+        if check_price and los and his and max(his) > MAX_PRICE_RATIO * min(los):
+            return False  # giá chênh > 5 lần -> gần như chắc chắn là tài sản khác
         self.p[rb] = ra
         self.lock[ra] = la or lb
+        self.lo[ra], self.hi[ra] = (min(los) if los else None), (max(his) if his else None)
+        return True
 
 
 def load_items(repo: Repository) -> list[Item]:
@@ -161,17 +173,21 @@ def load_items(repo: Repository) -> list[Item]:
     return out
 
 
-def cluster(items: list[Item], manual: dict[int, int]) -> list[list[Item]]:
+def cluster(items: list[Item], manual: dict[int, int], pinned: dict[int, int] | None = None) -> list[list[Item]]:
+    """manual: liên kết NGƯỜI DÙNG gộp/tách (luôn giữ). pinned: liên kết máy tự khoá (quét lịch sử, phiên hiện có) –
+    vẫn giữ nhưng có kiểm tra giá (chênh > 5 lần thì tách ra)."""
+    pinned = pinned or {}
     dsu = DSU()
     for it in items:
-        dsu.add(it.nid, manual.get(it.nid))
-    by_manual: dict[int, list[int]] = defaultdict(list)
-    for nid, pid in manual.items():
-        if nid in dsu.p:
-            by_manual[pid].append(nid)
-    for nids in by_manual.values():
-        for x in nids[1:]:
-            dsu.union(nids[0], x)
+        dsu.add(it.nid, manual.get(it.nid) or pinned.get(it.nid), it.price)
+    for links, check in ((manual, False), (pinned, True)):
+        by_pid: dict[int, list[int]] = defaultdict(list)
+        for nid, pid in links.items():
+            if nid in dsu.p:
+                by_pid[pid].append(nid)
+        for nids in by_pid.values():
+            for x in nids[1:]:
+                dsu.union(nids[0], x, check_price=check)
     strong: dict[tuple, int] = {}
     textk: dict[tuple, int] = {}
     dups: dict[int, int] = {}
@@ -191,7 +207,7 @@ def cluster(items: list[Item], manual: dict[int, int]) -> list[list[Item]]:
                 textk[k2] = it.nid
         if it.dup_group:
             if it.dup_group in dups:
-                dsu.union(dups[it.dup_group], it.nid)
+                dsu.union(dups[it.dup_group], it.nid, check_price=False)   # cùng một tin đăng ở 2 nguồn
             else:
                 dups[it.dup_group] = it.nid
     _auto_merge(items, dsu)
@@ -350,10 +366,12 @@ def _merge_into(s, target: Property, other: Property) -> None:
 def rebuild(repo: Repository) -> dict[str, int]:
     items = load_items(repo)
     with repo.session() as s:
-        links = {nid: (pid, man) for nid, pid, man in
-                 s.execute(select(PropertyNotice.notice_id, PropertyNotice.property_id, PropertyNotice.manual))}
-    manual = {nid: pid for nid, (pid, man) in links.items() if man}
-    clusters = cluster(items, manual)
+        rows = s.execute(select(PropertyNotice.notice_id, PropertyNotice.property_id, PropertyNotice.manual,
+                                PropertyNotice.link_source)).all()
+    links = {nid: (pid, man) for nid, pid, man, _ in rows}
+    manual = {nid: pid for nid, pid, man, src in rows if man and src == "manual"}           # người dùng gộp/tách
+    pinned = {nid: pid for nid, pid, man, src in rows if man and src != "manual"}           # máy tự khoá
+    clusters = cluster(items, manual, pinned)
     known = known_wards(items)
     stats = {"notices": len(items), "properties": len(clusters), "created": 0, "merged": 0}
     with repo.Session.begin() as s:

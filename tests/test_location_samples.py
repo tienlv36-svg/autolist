@@ -180,3 +180,11 @@ def test_debt_property_shows_collateral_address(tmp_path):
         p = s.query(Property).one()
         assert p.sale_form == "khoan_no" and (p.ward, p.province) == ("Xã Ka Đô", "Lâm Đồng")
         assert p.address == "TSBĐ: thôn 2, xã Ka Đô, tỉnh Lâm Đồng"
+
+
+def test_nay_without_la():
+    info = extract("Quyền sử dụng đất", "Quyền sử dụng đất",
+                   "số 12, phường Nhị Châu, TP Hải Dương, tỉnh Hải Dương (nay phường Hải Dương, thành phố Hải Phòng)")
+    assert (info.ward, info.province) == ("Phường Hải Dương", "Hải Phòng")
+    info2 = extract("Nhà đất", "Nhà đất hiện nay đang cho thuê, tọa lạc tại xã Tân Hội, tỉnh Đồng Tháp", None)
+    assert info2.ward == "Xã Tân Hội"                      # "hiện nay" không phải nhãn tên mới
