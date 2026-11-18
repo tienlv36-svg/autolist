@@ -376,11 +376,11 @@ def test_document_price_overrides_wrong_portal_price():
     assert labeled_starting_prices(txt) == {9_630_000_000}
     assert info_from_text(txt)["starting_price"] == 9_630_000_000
     doc = {"starting_price": 9_630_000_000, "methods": {"starting_price": "docx"}}
-    price, note = doc_price(doc, 4_635_000_000)
+    price, note = doc_price(doc, 6_635_000_000)
     assert price == 9_630_000_000 and "dùng giá trong thông báo" in note
     ocr = {"starting_price": 9_630_000_000, "methods": {"starting_price": "ocr"}}
-    price, note = doc_price(ocr, 4_635_000_000)
-    assert price == 4_635_000_000 and "kiểm tra" in note            # OCR: không tự sửa giá, chỉ cảnh báo
+    price, note = doc_price(ocr, 6_635_000_000)
+    assert price == 6_635_000_000 and "dùng giá cổng" in note        # OCR không kèm chữ: giữ giá cổng
     assert doc_price(doc, 9_630_000_000) == (9_630_000_000, None)
     two = txt + "\\nLô 2: Giá khởi điểm: 4.635.000.000 đồng"
     assert "starting_price" not in info_from_text(two)               # 2 giá khác nhau -> không lấy
@@ -399,10 +399,33 @@ def test_words_to_number_and_ocr_price_confirmed_by_words():
     assert info["starting_price"] == 9_630_000_000 and info["starting_price_words"] == 9_630_000_000
     ocr_ok = {"starting_price": 9_630_000_000, "starting_price_words": 9_630_000_000,
               "methods": {"starting_price": "ocr"}}
-    price, note = doc_price(ocr_ok, 4_635_000_000)
+    price, note = doc_price(ocr_ok, 6_635_000_000)
     assert price == 9_630_000_000 and "số và chữ khớp" in note       # bản scan, số = chữ -> tự sửa giá
     misread = {"starting_price": 9_680_000_000, "starting_price_words": 9_630_000_000,
                "methods": {"starting_price": "ocr"}}
     assert doc_price(misread, 9_630_000_000) == (9_630_000_000, None)  # OCR nhầm chữ số, phần chữ khớp cổng -> cổng
     unsure = {"starting_price": 9_680_000_000, "methods": {"starting_price": "ocr"}}
-    assert doc_price(unsure, 4_635_000_000)[0] == 4_635_000_000       # không có phần chữ -> chỉ cảnh báo
+    assert doc_price(unsure, 6_635_000_000)[0] == 6_635_000_000       # không có phần chữ -> chỉ cảnh báo
+
+
+def test_doc_price_ignores_deposit_unit_prices_and_far_values():
+    from auction_crawler.attachments import doc_price, info_from_text, labeled_prices_with_words
+    # tiền đặt trước "10% giá khởi điểm: N" không phải giá khởi điểm
+    t = ("Giá khởi điểm của tài sản là: 3.313.600.000 đồng. Tiền đặt trước: 10% giá khởi điểm: 331.360.000 đồng.")
+    assert labeled_prices_with_words(t) == [(3_313_600_000, None)]
+    t2 = "Khoản tiền đặt trước bằng [10%] giá khởi điểm: 331.360.000 đồng"
+    assert labeled_prices_with_words(t2) == []
+    # tổng giá khởi điểm thắng giá thành phần
+    t3 = ("Giá khởi điểm QSDĐ: 1.500.000.000 đồng; giá khởi điểm tài sản trên đất: 436.833.000 đồng. "
+          "Tổng giá khởi điểm: 1.936.833.000 đồng")
+    assert info_from_text(t3)["starting_price"] == 1_936_833_000
+    # giá thuê/m²
+    assert labeled_prices_with_words("Giá khởi điểm: 13.900.000 đồng/m2/tháng") == []
+    # chênh quá 2 lần -> giữ giá cổng, không ghi chú
+    doc = {"starting_price": 387_000_000, "methods": {"starting_price": "text"}}
+    assert doc_price(doc, 1_937_000_000) == (1_937_000_000, None)
+    doc = {"starting_price": 12_400_000_000, "methods": {"starting_price": "text"}}
+    assert doc_price(doc, 334_000_000) == (334_000_000, None)
+    # chênh vừa phải, file chữ -> dùng giá thông báo
+    doc = {"starting_price": 3_625_000_000, "methods": {"starting_price": "text"}}
+    assert doc_price(doc, 2_400_000_000)[0] == 3_625_000_000

@@ -329,22 +329,40 @@ def labeled_starting_prices(text: str) -> set[int]:
     return {v for v, _ in labeled_prices_with_words(text)}
 
 
+# câu nói về MỘT PHẦN giá khởi điểm (tiền đặt trước "10% giá khởi điểm", bước giá…) hoặc giá theo đơn vị (/m², /tháng)
+_NOT_PRICE_BEFORE = re.compile(r"(%|phan tram|dat truoc|tien coc|dat coc|buoc gia|bang\s*\d|toi thieu|so voi)[^.;:\n]{0,40}$")
+_NOT_PRICE_GAP = re.compile(r"%|phan tram|dat truoc|buoc gia|m2|/\s*m|mot\s*(m|met|thang|nam)|/\s*thang|/\s*nam|"
+                            r"moi\s*(m|thang|nam)|thue|tra\s*gia\s*toi\s*thieu")
+_NOT_PRICE_AFTER = re.compile(r"^\s*(dong|vnd|d)?\s*(/\s*(m|thang|nam)|mot\s*(m|thang|nam)|m2)")
+MAX_DOC_RATIO = 2.0          # giá thông báo chênh giá cổng quá 2 lần -> không thay (gần như chắc chắn đọc nhầm số khác)
+
+
 def labeled_prices_with_words(text: str) -> list[tuple[int, int | None]]:
-    """[(số, số đọc từ "Bằng chữ: …" ngay sau, nếu có)] của các giá khởi điểm."""
+    """[(số, số đọc từ "Bằng chữ: …" ngay sau, nếu có)] của các giá khởi điểm. Bỏ: "10% giá khởi điểm: N" (tiền đặt
+    trước), giá theo m²/tháng. Có "TỔNG giá khởi điểm" -> chỉ lấy (các) số tổng (giá thành phần QSDĐ + nhà… bỏ qua)."""
     norm = strip_accents(text or "")
-    out = []
+    out, totals = [], []
     for m in _PRICE_RE.finditer(norm):
         v = int(re.sub(r"\D", "", m.group(1)))
         if v < 1_000_000:
             continue
+        before = norm[max(0, m.start() - 60):m.start()]
+        gap = norm[m.start():m.start(1)]
+        if (_NOT_PRICE_BEFORE.search(before) or _NOT_PRICE_GAP.search(gap)
+                or _NOT_PRICE_AFTER.search(norm[m.end():m.end() + 25])):
+            continue
         wm = _WORDS_RE.search(norm[m.end():m.end() + 260])
-        out.append((v, words_to_number(wm.group(1)) if wm else None))
-    return out
+        item = (v, words_to_number(wm.group(1)) if wm else None)
+        out.append(item)
+        if re.search(r"tong\s*(cong\s*)?$", before.rstrip(" :")) or re.search(r"\btong\b", gap):
+            totals.append(item)
+    return totals or out
 
 
 def doc_price(doc: dict | None, portal: int | None, property_count: int | None = 1) -> tuple[int | None, str | None]:
     """Giá khởi điểm của MỘT phiên: giá trên cổng, trừ khi file thông báo ghi rõ MỘT giá khởi điểm khác -> dùng giá trong
-    thông báo. File đọc được chữ: tin luôn. Bản scan (OCR): tin khi số và phần "Bằng chữ" khớp nhau. Trả (giá, ghi chú)."""
+    thông báo. File đọc được chữ: tin luôn. Bản scan (OCR): tin khi số và phần "Bằng chữ" khớp nhau. Chênh giá cổng quá
+    2 lần -> KHÔNG thay (thường là số khác: tiền đặt trước, giá/m², tổng nhiều tài sản), giữ giá cổng. Trả (giá, ghi chú)."""
     if (property_count or 1) != 1 or not doc or doc.get("multi"):
         return portal, None
     v = doc.get("starting_price")
@@ -353,13 +371,15 @@ def doc_price(doc: dict | None, portal: int | None, property_count: int | None =
         return portal, None
     if portal and words and abs(words - portal) <= 0.01 * portal:
         return portal, None                           # OCR đọc nhầm chữ số, phần bằng chữ khớp giá cổng -> cổng đúng
+    if portal and not (1 / MAX_DOC_RATIO <= v / portal <= MAX_DOC_RATIO):
+        return portal, None                           # chênh quá xa: không phải cùng một giá -> tin giá cổng, không báo
     method = (doc.get("methods") or {}).get("starting_price", "ocr")
     from .web.fmt import money
     if method != "ocr" or (words and words == v):
         how = "" if method != "ocr" else " (bản scan, số và chữ khớp nhau)"
         return v, (f"Giá trên cổng ({money(portal)}) khác giá ghi trong thông báo ({money(v)}){how} – dùng giá trong "
                    f"thông báo" if portal else None)
-    return portal, (f"Thông báo (OCR) ghi giá khởi điểm {money(v)}, khác giá trên cổng {money(portal)} – kiểm tra"
+    return portal, (f"Thông báo (OCR) ghi giá khởi điểm {money(v)}, khác giá trên cổng {money(portal)} – dùng giá cổng"
                     if portal else None)
 
 

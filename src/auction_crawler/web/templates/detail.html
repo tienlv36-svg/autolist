@@ -108,7 +108,7 @@
       <td><b>{{ se.no }}</b>{% if pn.link_source == 'history' %} <span class="tag auto" title="Tìm được khi quét lịch sử theo từ khoá">lịch sử</span>{% elif pn.link_source == 'manual' %} <span class="tag manual" title="Do người dùng gộp/tách">TC</span>{% endif %}</td>
       <td>{{ fmt.dt(n.auction_date) }}</td><td>{{ fmt.dt(n.registration_end) }}</td>
       {% set sp = se.price %}
-      <td class="r">{% if (n.property_count or 1) > 1 %}<span class="muted small" title="Thông báo gồm {{ n.property_count }} tài sản, mỗi tài sản một giá – xem mô tả">nhiều tài sản</span>{% else %}{{ fmt.money(sp, False) }}{% if se.price_note %} <span class="tag {{ 'doc' if sp != n.starting_price else 'warn' }}" title="{{ se.price_note }}">{{ 'theo thông báo' if sp != n.starting_price else 'kiểm tra' }}</span>{% endif %}{% endif %}</td>
+      <td class="r">{% if (n.property_count or 1) > 1 %}<span class="muted small" title="Thông báo gồm {{ n.property_count }} tài sản, mỗi tài sản một giá – xem mô tả">nhiều tài sản</span>{% else %}{{ fmt.money(sp, False) }}{% if se.price_note %} <span class="tag {{ 'doc' if sp != n.starting_price else 'warn' }}" title="{{ se.price_note }}">{{ 'theo thông báo' if sp != n.starting_price else 'giá cổng' }}</span>{% endif %}{% endif %}</td>
       <td class="r">{% if sp and ns.prev and sp != ns.prev %}{{ '%+.1f'|format((sp - ns.prev) / ns.prev * 100) }}%{% endif %}</td>
       <td class="r">{% if sp and base and sp != base %}{{ '%+.1f'|format((sp - base) / base * 100) }}%{% endif %}</td>
       {% if sp %}{% set ns.prev = sp %}{% endif %}

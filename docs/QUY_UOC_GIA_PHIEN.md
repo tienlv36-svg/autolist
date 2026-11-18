@@ -112,7 +112,10 @@ rõ và chỉ một giá trị; file nhiều thửa/lô → không lấy.
 
 **Giá:** mặc định giá chính thức trên cổng; nếu file thông báo ghi rõ MỘT giá khởi điểm khác (file đọc được chữ, hoặc
 bản scan mà số và phần “Bằng chữ” khớp nhau) → **dùng giá trong thông báo** (cổng nhập sai), nhãn “theo thông báo”.
-Bản scan không đối chiếu được thì chỉ gắn nhãn “kiểm tra”. Giá trị **nhập tay** luôn
+Bản scan không đối chiếu được → giữ giá cổng (nhãn “giá cổng”). **Không bao giờ thay** khi giá thông báo chênh giá cổng
+quá 2 lần (thường là số khác). Không coi là giá khởi điểm: câu tiền đặt trước (“10% giá khởi điểm: N đồng”), bước giá,
+giá theo m²/tháng; có “Tổng giá khởi điểm” thì lấy tổng (bỏ giá thành phần QSDĐ / tài sản trên đất). Phiên mà file
+thông báo bán nhiều lô trong khi cổng ghi 1 tài sản → không so giá giữa các phiên (không tính % giảm). Giá trị **nhập tay** luôn
 được ưu tiên. Trên trang chi tiết: mục *“File đính kèm đã lưu trên máy chủ”* (mở file, xem chữ đã đọc); file nguồn
 đã lưu được mở từ máy chủ kể cả khi website nguồn gỡ.
 

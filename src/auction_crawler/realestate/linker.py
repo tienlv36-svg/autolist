@@ -96,7 +96,8 @@ class Item:
     property_count: int | None = None
     doc: dict | None = None
     gcn: frozenset = frozenset()     # số giấy chứng nhận nhắc trong tin (vd "BR 234700")
-    places: tuple = ()               # nơi có từng tài sản (thông báo nhiều tài sản: mỗi tài sản một nơi)          # thông số trích từ file đính kèm (attachments.merge_file_infos)
+    places: tuple = ()               # nơi có từng tài sản (thông báo nhiều tài sản: mỗi tài sản một nơi)
+    partial: bool = False            # cổng ghi 1 tài sản nhưng file thông báo bán NHIỀU lô -> giá cổng có thể chỉ của 1 lô          # thông số trích từ file đính kèm (attachments.merge_file_infos)
 
 
 MAX_PRICE_RATIO = 5      # một tài sản không thể có giá khởi điểm chênh nhau quá 5 lần giữa các phiên
@@ -176,7 +177,8 @@ def load_items(repo: Repository) -> list[Item]:
                         r.property_count, r.doc_info if (r.property_count or 1) == 1 else None,
                         frozenset(gcn_serials(f"{r.title} {r.asset_name or ''}"[:3000])),
                         tuple(dict.fromkeys([*places.get(r.id, []), *(x.strip() for x in (address or "").split("|")
-                                                                       if x.strip())]))))
+                                                                       if x.strip())])),
+                        bool(single and r.doc_info and r.doc_info.get("multi"))))
     return out
 
 
@@ -691,6 +693,14 @@ def _apply(s, prop: Property, members: list[Item], pn_all: dict, pn_by_prop: dic
     prop.session_count = len(sessions)
     prop.session_hint_max = max((m.info.session_hint for m in members if m.info.session_hint), default=None)
     prop.price_first = priced[0][1] if priced and priced[0][0] is sessions[0] else None
+    if len(priced) > 1 and any(any(x.partial for x in g) for g, *_ in priced):
+        # phiên mà file thông báo bán nhiều lô: giá cổng có thể là giá 1 lô hoặc tổng -> không so giá giữa các phiên
+        prop.price_first = None
+        notes_ = list(prop.auto_notes or [])
+        notes_.append("Có phiên mà file thông báo gồm nhiều tài sản (giá cổng có thể chỉ là 1 tài sản hoặc tổng) – "
+                      "không so giá giữa các phiên")
+        prop.auto_notes = notes_
+        priced = [priced[-1]]
     prop.price_latest = priced[-1][1] if priced and priced[-1][0] is latest_g else None
     prop.deposit_latest = priced[-1][2] if priced and priced[-1][0] is latest_g else None
     if priced and priced[-1][0] is not latest_g:

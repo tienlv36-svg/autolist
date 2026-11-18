@@ -101,8 +101,8 @@ tự sửa trong `/root/autolist` (token GitHub trên VPS chỉ có quyền đ�
 - Quy ước phiên, giá phiên 1, giá hiện tại, % giảm, quét lịch sử: `docs/QUY_UOC_GIA_PHIEN.md`.
 - Giá taisancong (OCR từ PDF) chỉ là tham khảo, không phải giá chính thức.
 - Số liệu tài sản (diện tích, tờ/thửa, kích thước) ưu tiên lấy từ file đính kèm; OCR khác tin đăng → dùng tin đăng
-  (`properties.field_sources`). Giá: file thông báo ghi rõ một giá khởi điểm khác cổng (chữ, hoặc scan mà số = “Bằng chữ”) →
-  dùng giá thông báo. **Lịch tự động** dọn file gốc của tài sản hết hạn không ra
+  (`properties.field_sources`). Giá: file thông báo ghi rõ một giá khởi điểm khác cổng (chữ, hoặc scan mà số = “Bằng chữ”) và
+  chênh không quá 2 lần → dùng giá thông báo (bỏ câu tiền đặt trước “10% giá khởi điểm”, giá/m²; có “Tổng giá khởi điểm” thì lấy tổng). **Lịch tự động** dọn file gốc của tài sản hết hạn không ra
   phiên mới (`docs-prune`, giữ `.txt` và thông số; trừ giỏ hàng/ưu tiên cao): quá 30 ngày → quy chế/thông báo; quá 90
   ngày → mọi file. Bản vẽ sơ đồ thửa đất, sổ hồng, ảnh… giữ tới 90 ngày. Ổ dùng ≥ 80%: lịch tự dọn sớm cả file tài sản đã hết hạn chưa đủ 30 ngày (hết hạn lâu nhất trước) tới khi ổ <
   75%. Ngoài lịch đó, **không tự xoá** `data/files/` khi chưa được yêu cầu.

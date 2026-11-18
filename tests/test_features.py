@@ -246,3 +246,20 @@ def test_multi_asset_notice_lists_all_places_and_filters(env):  # noqa: F811
     assert "Nhiều nơi:" in page
     wards = {w["name"]: w["count"] for w in c.get("/api/wards?province=Tây Ninh").json()}
     assert wards.get("Xã Thạnh Bình") == 1 and wards.get("Xã Tân Thành") == 1    # "Nhiều nơi" đếm vào từng xã
+
+
+def test_no_discount_when_a_session_file_sells_several_lots(env):  # noqa: F811
+    from auction_crawler.storage import NoticeRow
+    repo, c = env
+    text = "Quyền sử dụng đất thửa đất số 45, tờ bản đồ số 12, diện tích 250 m2 tại xã Tân Phú, tỉnh Đồng Nai"
+    _add(repo, "901", text, when=datetime.now() - timedelta(days=40))
+    _add(repo, "902", text, doc={"multi": True, "methods": {}})
+    with repo.Session.begin() as s:
+        s.query(NoticeRow).filter_by(source_id="901").one().starting_price = 10_700_000_000
+        s.query(NoticeRow).filter_by(source_id="902").one().starting_price = 4_635_000_000
+    rebuild(repo)
+    with repo.session() as s:
+        p = s.query(Property).filter(Property.title.contains("thửa đất số 45")).one()
+        assert p.session_count == 2 and p.price_latest == 4_635_000_000
+        assert p.price_first is None and p.discount_pct is None
+        assert any("nhiều tài sản" in n for n in p.auto_notes)
