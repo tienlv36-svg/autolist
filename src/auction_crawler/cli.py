@@ -383,6 +383,38 @@ def docs_reparse():
     console.print(f"Đã trích lại {n} tin")
 
 
+@app.command("ward-map-import")
+def ward_map_import(path: Path = typer.Argument(..., help="File danh sách chính thức: .xlsx, .csv, .txt hoặc .pdf (Nghị quyết)"),
+                    province: str = typer.Option(None, "--province", "-p", help="Tỉnh MỚI (khi file không ghi tỉnh)"),
+                    replace: bool = typer.Option(False, "--replace", help="Thay toàn bộ bảng (mặc định: thêm vào)")):
+    """Nạp bảng xã/phường CŨ -> MỚI (sắp xếp 2025) vào data/ward_mapping.csv. Sau đó chạy docs-reparse để áp dụng."""
+    from .realestate import wardmap
+
+    _setup()
+    rows = wardmap.read_source(path, province)
+    total = wardmap.write_mapping(rows, append=not replace)
+    wm = wardmap.load()
+    console.print(f"Đọc {len(rows)} dòng từ {path.name}; bảng hiện có {total} dòng, {len(wm.new)} tỉnh. "
+                  "Chạy `auction docs-reparse` để áp dụng.")
+
+
+@app.command("ward-map-stats")
+def ward_map_stats(test: str = typer.Option(None, "--test", help='Thử quy đổi: "Xã Mỹ Tân|Đồng Tháp"')):
+    """Xem bảng xã cũ -> mới đã nạp (số dòng theo tỉnh), hoặc thử quy đổi một tên."""
+    from .realestate import wardmap
+
+    _setup()
+    wm = wardmap.load()
+    if test:
+        w, _, pv = test.partition("|")
+        console.print(f"{w} ({pv}) -> {wm.to_new(w.strip(), pv.strip()) or 'không quy đổi (đã là tên mới / không rõ / chưa có)'}")
+        return
+    console.print(f"File: {wardmap.mapping_path()} – {wm.rows} dòng")
+    for pv in sorted(wm.new):
+        n_old = sum(len(v) for (p, _), v in wm.old.items() if p == pv)
+        console.print(f"  {pv}: {len(wm.new[pv])} xã/phường mới, {n_old} tên cũ")
+
+
 @app.command("alerts")
 def alerts_cmd():
     """Gửi ngay bộ lọc đã lưu + nhắc hạn vào Telegram cá nhân (bình thường chạy sau mỗi lượt tự động)."""

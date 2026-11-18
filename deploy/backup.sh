@@ -30,7 +30,7 @@ dst.close()
 PY
 
 EXTRA=()
-for f in media secret.key telegram.json .domain; do [ -e "$APP_DIR/data/$f" ] && EXTRA+=("$f"); done
+for f in media secret.key telegram.json .domain ward_mapping.csv; do [ -e "$APP_DIR/data/$f" ] && EXTRA+=("$f"); done
 if [ ${#EXTRA[@]} -gt 0 ]; then
   tar -czf "$FILE" -C "$TMP" auction.db -C "$APP_DIR/data" "${EXTRA[@]}"
 else

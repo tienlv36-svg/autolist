@@ -27,6 +27,7 @@ from ..normalize import plausible_dt, strip_accents
 from ..storage import AssetRow, NoticeRow, Repository
 from .db import Activity, Comment, FileView, Property, PropertyFile, PropertyNotice, Task
 from ..attachments import doc_price
+from . import wardmap
 from .history import gcn_serials
 from .extract import RealEstateInfo, clause_location, extract, place_rejection, ward_key
 
@@ -571,6 +572,11 @@ def _location(members: list[Item], known: dict, notes: list[str]) -> tuple[str |
             notes.append(f"Xã/phường lấy theo người có tài sản: UBND {ow}")
         if pp is None and op:
             pp, srcs["province"] = op, "đơn vị có tài sản (UBND xã)"
+    if pw and pp:                                    # tên cũ (tài liệu/UBND xã) -> tên sau sắp xếp 2025
+        nw = wardmap.load().to_new(pw, pp, "\n".join(filter(None, (recent[0].address, recent[0].title))) if recent else "")
+        if nw:
+            notes.append(f"{pw} nay là {nw} (danh sách sắp xếp xã/phường 2025)")
+            pw = nw
     return pw, pp, srcs, uniq
 
 
@@ -594,8 +600,10 @@ def _all_locations(prop: Property, members: list[Item]) -> tuple[str | None, str
     elif prop.province and not provs:
         pairs = [(w, prop.province) for w, _ in pairs]
     by_prov: dict[str, dict[str, str]] = defaultdict(dict)
+    wm = wardmap.load()
     for w, pv in pairs:
         d = by_prov[pv or ""]
+        w = (wm.to_new(w, pv) or w) if w and pv and wm else w
         if w:
             d.setdefault(_core_ward(w), w)
     names = {n for pv, d in by_prov.items() for n in (pv, *d.values()) if n}

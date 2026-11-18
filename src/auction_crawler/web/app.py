@@ -152,8 +152,17 @@ def create_app(repo: Repository | None = None, media_root: Path | None = None,
     def _wards(s, province: str) -> list[tuple[str, int]]:
         w = func.coalesce(Property.ward_manual, Property.ward)
         pv = func.coalesce(Property.province_manual, Property.province)
-        return [(n, c) for n, c in s.execute(select(w, func.count()).where(pv == province, w.is_not(None))
-                                             .group_by(w).order_by(w))]
+        counts: dict[str, int] = dict(s.execute(select(w, func.count()).where(pv == province, w.is_not(None))
+                                                .group_by(w)).all())
+        # tài sản "Nhiều nơi" (bán nhiều tài sản ở nhiều xã): đếm vào từng xã của tỉnh này để lọc ra được
+        for multi, in s.execute(select(Property.loc_multi).where(Property.loc_index.contains(f"|{province}|"),
+                                                                 Property.loc_multi.is_not(None), w.is_(None))):
+            for seg in (multi or "").removeprefix("Nhiều nơi:").split(";"):
+                names, _, pvn = seg.rpartition(" – ")
+                if pvn.strip() == province:
+                    for n in {x.strip() for x in names.split(",") if x.strip() and x.strip() != "(xã chưa rõ)"}:
+                        counts[n] = counts.get(n, 0) + 1
+        return sorted(counts.items(), key=lambda kv: kv[0])
 
     @app.get("/api/wards")
     def api_wards(request: Request, province: str = ""):

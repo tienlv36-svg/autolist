@@ -148,6 +148,18 @@ Bản scan không đối chiếu được thì chỉ gắn nhãn “kiểm tra�
   nhau → lấy theo **phiên gần nhất**. Ghi chú lý do chọn ở trang chi tiết. Tin nhiều tài sản ở nhiều nơi → để trống.
   Có thể sửa tay trong trang chi tiết (giá trị nhập tay luôn ưu tiên).
 
+### Bảng xã/phường cũ → mới (sắp xếp 2025)
+
+- File `data/ward_mapping.csv` (cột `tinh_moi,xa_moi,xa_cu,huyen_cu,tinh_cu,mot_phan`), nạp từ danh sách chính thức
+  bằng `auction ward-map-import <file .xlsx/.csv/.txt/.pdf> [--province "Tỉnh mới"]`; xem bằng `auction ward-map-stats`
+  (thử: `--test "Xã Mỹ Tân|Đồng Tháp"`). Nạp xong chạy `auction docs-reparse` để áp dụng cho dữ liệu cũ.
+- Tin chỉ ghi tên xã CŨ → tự đổi sang tên xã MỚI khi chắc chắn: tên cũ ứng với đúng một xã mới trong tỉnh đó; trùng tên ở
+  nhiều huyện cũ thì tin phải ghi huyện khớp; xã cũ bị chia cho nhiều xã mới (`mot_phan=1`) → giữ tên cũ. Có ghi chú
+  “X nay là Y (danh sách sắp xếp xã/phường 2025)”.
+- So tên có phân biệt thanh điệu (Thạnh ≠ Thành), không phụ thuộc vị trí dấu (Hoà = Hòa).
+- Chưa có bảng → giữ nguyên tên trong tin như trước.
+- Ô “Xã/phường” ở trang Tài sản đếm cả tài sản “Nhiều nơi” vào từng xã có trong tin.
+
 ## 7. Gộp phiên tự động
 
 Ngoài các cách ở mục 1, phần mềm **tự gộp** hai tin là cùng một BĐS khi:

@@ -577,6 +577,12 @@ def extract(title: str, asset_name: str | None = None, address: str | None = Non
     if pv is None and len({p for _, l in primary for p in l.provinces} | set(fb.provinces)) > 1:
         info.notes.append("Tin nhắc nhiều tỉnh/thành – để trống")
     info.province = info.province_raw = pv
+    if w and pv and not w_new:                      # tên xã CŨ -> tên sau sắp xếp 2025 (bảng chính thức, chỉ khi chắc chắn)
+        from .wardmap import load as _wardmap
+        nw = _wardmap().to_new(w, pv, f"{address or ''}\n{text}")
+        if nw:
+            info.notes.append(f"{w} nay là {nw} (danh sách sắp xếp xã/phường 2025)")
+            info.ward, info.ward_new = nw, True
     return _finish(info, title, asset_name, norm)
 
 

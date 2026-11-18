@@ -53,6 +53,7 @@ Các lệnh CLI hay dùng (`auction --help` để xem đủ):
 | `history-scan -n N` | Quét lịch sử giá (phiên cũ) cho tài sản còn hạn đăng ký |
 | `docs-fetch -m PHÚT [-n N]` | Tải, lưu, đọc file đính kèm (còn hạn trước) rồi gom phiên lại |
 | `docs-reparse` | Trích lại số liệu từ chữ đã lưu (không tải lại) rồi gom phiên lại |
+| `ward-map-import <file> [--province T]`, `ward-map-stats` | Nạp/xem bảng xã cũ → mới 2025 (`data/ward_mapping.csv`; sau khi nạp chạy `docs-reparse`) |
 | `docs-compress -m PHÚT`, `docs-prune --days N` | Nén bản scan đã lưu; dọn file gốc tài sản hết hạn quá N ngày (xoá dữ liệu – hỏi trước) |
 | `alerts` | Gửi ngay bộ lọc đã lưu + nhắc hạn vào Telegram cá nhân (gửi tin – hỏi người dùng trước) |
 | `dedupe`, `tag-types` | Tin trùng giữa 2 nguồn; loại tài sản chính thức (dgts) |

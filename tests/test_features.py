@@ -244,3 +244,5 @@ def test_multi_asset_notice_lists_all_places_and_filters(env):  # noqa: F811
     assert "Bán 3 tài sản" not in c.get("/?province=Hà+Nội").text
     page = c.get("/?province=Đồng+Tháp").text
     assert "Nhiều nơi:" in page
+    wards = {w["name"]: w["count"] for w in c.get("/api/wards?province=Tây Ninh").json()}
+    assert wards.get("Xã Thạnh Bình") == 1 and wards.get("Xã Tân Thành") == 1    # "Nhiều nơi" đếm vào từng xã
