@@ -26,6 +26,7 @@ from sqlalchemy import select, update
 from ..normalize import plausible_dt, strip_accents
 from ..storage import AssetRow, NoticeRow, Repository
 from .db import Activity, Comment, FileView, Property, PropertyFile, PropertyNotice, Task
+from ..attachments import doc_price
 from .history import gcn_serials
 from .extract import RealEstateInfo, clause_location, extract, place_rejection, ward_key
 
@@ -159,11 +160,16 @@ def load_items(repo: Repository) -> list[Item]:
         info = extract(r.title, r.asset_name, address, r.asset_type, assets.get(r.id))
         if bad_place:
             info.notes.append(f"Địa chỉ tài sản để trống: {bad_place}")
+        price = r.starting_price if (r.property_count or 1) == 1 else None
+        if r.doc_info:
+            price, pnote = doc_price(r.doc_info, price, r.property_count)
+            if pnote:
+                info.notes.append(pnote)
         # giá: chỉ dùng giá chính thức khi nguồn đăng MỘT giá cho thông báo (kể cả gói "trọn gói" nhiều thửa
         # bán chung 1 giá). Thông báo có nhiều tài sản, mỗi tài sản một giá -> không cộng, để trống.
         single = (r.property_count or 1) == 1
         out.append(Item(r.id, r.source, r.title, r.asset_owner, r.origin, info.province, address,
-                        r.starting_price if single else None, r.deposit if single else None,
+                        price if single else None, r.deposit if single else None,
                         plausible_dt(r.auction_date), plausible_dt(r.registration_end), plausible_dt(r.publish_date),
                         r.dup_group, cat, info,
                         r.property_count, r.doc_info if (r.property_count or 1) == 1 else None,

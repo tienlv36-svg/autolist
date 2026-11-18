@@ -290,6 +290,36 @@ def asset_section(text: str) -> str:
     return "\n".join(norm[a:b] for a, b in parts)
 
 
+_PRICE_RE = re.compile(r"gia\s*khoi\s*diem[^0-9]{0,80}?(\d{1,3}(?:[.,]\d{3}){2,})")
+
+
+def labeled_starting_prices(text: str) -> set[int]:
+    """Các số tiền đứng ngay sau nhãn "giá khởi điểm" (từ 1 triệu trở lên)."""
+    out = set()
+    for m in _PRICE_RE.finditer(strip_accents(text or "")):
+        v = int(re.sub(r"\D", "", m.group(1)))
+        if v >= 1_000_000:
+            out.add(v)
+    return out
+
+
+def doc_price(doc: dict | None, portal: int | None, property_count: int | None = 1) -> tuple[int | None, str | None]:
+    """Giá khởi điểm của MỘT phiên: giá trên cổng, trừ khi file thông báo (đọc được chữ, không phải OCR) ghi rõ MỘT giá
+    khởi điểm khác -> dùng giá trong thông báo. Trả (giá, ghi chú)."""
+    if (property_count or 1) != 1 or not doc or doc.get("multi"):
+        return portal, None
+    v = doc.get("starting_price")
+    if not v or (portal and abs(v - portal) <= 0.01 * portal):
+        return portal, None
+    method = (doc.get("methods") or {}).get("starting_price", "ocr")
+    from .web.fmt import money
+    if method != "ocr":
+        return v, (f"Giá trên cổng ({money(portal)}) khác giá ghi trong thông báo ({money(v)}) – dùng giá trong thông báo"
+                   if portal else None)
+    return portal, (f"Thông báo (OCR) ghi giá khởi điểm {money(v)}, khác giá trên cổng {money(portal)} – kiểm tra"
+                    if portal else None)
+
+
 def info_from_text(text: str) -> dict[str, Any]:
     sec = asset_section(text)
     out: dict[str, Any] = {}
@@ -301,6 +331,9 @@ def info_from_text(text: str) -> dict[str, Any]:
         if info.notes:
             out["notes"] = info.notes[:5]
     if not out.get("multi"):
+        prices = labeled_starting_prices(text)
+        if len(prices) == 1:                      # đúng MỘT giá khởi điểm ghi rõ trong văn bản
+            out["starting_price"] = prices.pop()
         # vị trí: cụm "tọa lạc tại / địa chỉ thửa đất / nơi có tài sản …" trong TOÀN văn bản (giữ dấu tiếng Việt)
         loc = asset_location(text)
         if loc.ward:
@@ -318,7 +351,7 @@ def merge_file_infos(infos: list[tuple[dict, str]]) -> dict[str, Any]:
         out["multi"] = True
         out["notes"].append("Tài liệu gồm nhiều thửa/lô – không lấy số liệu từ tài liệu")
         return out
-    for f in (*DOC_FIELDS, "ward", "province"):
+    for f in (*DOC_FIELDS, "ward", "province", "starting_price"):
         vals = [(i[f], m) for i, m in infos if i.get(f) not in (None, "")]
         if not vals:
             continue

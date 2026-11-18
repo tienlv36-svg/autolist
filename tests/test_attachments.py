@@ -366,3 +366,21 @@ def test_plot_drawing_kept_until_90_days(env):
     much_later = datetime.now() + timedelta(days=120)      # hết hạn > 90 ngày -> dọn hết
     assert prune_expired(s, repo, days=30, now=much_later)[0] == 1
     assert not (base / "files/dgts/x/11/Ban ve so do thua dat.pdf").exists()
+
+
+def test_document_price_overrides_wrong_portal_price():
+    from auction_crawler.attachments import doc_price, info_from_text, labeled_starting_prices
+    txt = ("THÔNG BÁO ĐẤU GIÁ TÀI SẢN\\n1. Tên tài sản: Quyền sử dụng đất thửa đất số 5, tờ bản đồ số 2\\n"
+           "2. Giá khởi điểm: 9.630.000.000 đồng (Bằng chữ: Chín tỷ sáu trăm ba mươi triệu đồng)\\n"
+           "3. Tiền đặt trước: 1.926.000.000 đồng")
+    assert labeled_starting_prices(txt) == {9_630_000_000}
+    assert info_from_text(txt)["starting_price"] == 9_630_000_000
+    doc = {"starting_price": 9_630_000_000, "methods": {"starting_price": "docx"}}
+    price, note = doc_price(doc, 4_635_000_000)
+    assert price == 9_630_000_000 and "dùng giá trong thông báo" in note
+    ocr = {"starting_price": 9_630_000_000, "methods": {"starting_price": "ocr"}}
+    price, note = doc_price(ocr, 4_635_000_000)
+    assert price == 4_635_000_000 and "kiểm tra" in note            # OCR: không tự sửa giá, chỉ cảnh báo
+    assert doc_price(doc, 9_630_000_000) == (9_630_000_000, None)
+    two = txt + "\\nLô 2: Giá khởi điểm: 4.635.000.000 đồng"
+    assert "starting_price" not in info_from_text(two)               # 2 giá khác nhau -> không lấy

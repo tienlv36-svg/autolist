@@ -203,10 +203,15 @@ def create_app(repo: Repository | None = None, media_root: Path | None = None,
                         sessions[-1]["n"] = n
                     continue
                 sessions.append({"no": pn.session_no, "pn": pn, "n": n, "dups": []})
+            from ..attachments import doc_price
+            for se in sessions:                         # giá phiên: theo thông báo nếu file ghi rõ giá khác cổng
+                n0 = se["n"]
+                se["price"], se["price_note"] = doc_price(n0.doc_info, n0.starting_price if (n0.property_count or 1) == 1
+                                                          else None, n0.property_count)
             chart = fmt.price_chart([
                 (f"P{se['no']}" + (f" {se['n'].auction_date:%m/%y}" if se['n'].auction_date else ""),
-                 se["n"].starting_price if (se["n"].property_count or 1) == 1 else None,
-                 f"Phiên {se['no']} – {fmt.dt(se['n'].auction_date, False)}: {fmt.money(se['n'].starting_price, False)}")
+                 se["price"],
+                 f"Phiên {se['no']} – {fmt.dt(se['n'].auction_date, False)}: {fmt.money(se['price'], False)}")
                 for se in sessions])
             latest = s.get(NoticeRow, p.latest_notice_id) if p.latest_notice_id else None
             assets = s.scalars(select(AssetRow).where(AssetRow.notice_id == p.latest_notice_id)).all() if latest else []
