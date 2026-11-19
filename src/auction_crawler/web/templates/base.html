@@ -27,7 +27,7 @@
     <a href="/admin/system" class="{{ 'on' if request.url.path.startswith('/admin/system') }}">Hệ thống</a>{% endif %}
   </nav>
   <div class="me">
-    <a href="/account">{{ user.full_name }}</a>
+    <a href="/account" title="Tài khoản của tôi">👤 <span class="uname">{{ user.full_name }}</span></a>
     <form method="post" action="/logout"><button class="link">Đăng xuất</button></form>
   </div>
 </header>

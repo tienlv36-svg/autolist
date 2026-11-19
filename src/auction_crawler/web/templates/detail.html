@@ -66,7 +66,7 @@
         {% elif v not in (none, '') %}<span class="tag auto" title="Ghi rõ trong tin đăng">từ tin gốc</span>{% endif %}</dd></div>
     {% endfor %}
     <div><dt>Người có tài sản</dt><dd>{{ p.owner_name or '—' }}</dd></div>
-    <div><dt>Tổ chức đấu giá</dt><dd>{{ latest.auction_org if latest else '—' }}</dd></div>
+    <div><dt>Tổ chức đấu giá</dt><dd>{{ (latest.auction_org if latest else None) or '—' }}</dd></div>
     <div><dt>Địa điểm đấu giá</dt><dd>{{ (latest.auction_place if latest else None) or '—' }}</dd></div>
   </dl>
   {% if p.auto_notes %}
@@ -85,9 +85,9 @@
   {% if latest %}
   <details class="desc"><summary>Mô tả đầy đủ trong thông báo gần nhất</summary>
     <p>{{ latest.asset_name or latest.title }}</p>
-    {% if assets %}<table class="tbl small"><tr><th>Tài sản</th><th>Nơi có TS</th><th>Giá khởi điểm</th><th>Đặt trước</th></tr>
-      {% for a in assets %}<tr><td>{{ a.name }}</td><td>{{ a.place or '' }}</td><td>{{ fmt.money(a.starting_price, False) }}</td><td>{{ fmt.money(a.deposit, False) if a.deposit_unit == 'VND' else (a.deposit ~ ' ' ~ (a.deposit_unit or '')) }}</td></tr>{% endfor %}
-    </table>{% endif %}
+    {% if assets %}<div class="tblwrap"><table class="tbl small resp"><tr><th>Tài sản</th><th>Nơi có TS</th><th>Giá khởi điểm</th><th>Đặt trước</th></tr>
+      {% for a in assets %}<tr><td>{{ a.name }}</td><td data-label="Nơi có TS">{{ a.place or '' }}</td><td data-label="Giá khởi điểm">{{ fmt.money(a.starting_price, False) }}</td><td data-label="Đặt trước">{{ fmt.money(a.deposit, False) if a.deposit_unit == 'VND' else (a.deposit ~ ' ' ~ (a.deposit_unit or '')) }}</td></tr>{% endfor %}
+    </table></div>{% endif %}
   </details>
   {% endif %}
 </section>
@@ -100,19 +100,19 @@
     tra cứu giá phiên đầu thật rồi nhập tay ô “Giá phiên 1” nếu cần.</div>
   {% elif p.history_note %}<p class="small muted">Quét lịch sử: {{ p.history_note }} ({{ fmt.dt(p.history_scanned_at) }})</p>{% endif %}
   {% if chart %}<div class="chartbox"><div class="small muted">Giá khởi điểm qua các phiên (rê chuột / chạm vào điểm để xem giá)</div>{{ chart|safe }}</div>{% endif %}
-  <div class="tblwrap"><table class="tbl">
+  <div class="tblwrap"><table class="tbl resp sess">
     <tr><th>Phiên</th><th>Ngày đấu giá</th><th>Hạn đăng ký</th><th class="r">Giá khởi điểm</th><th class="r" title="So với phiên trước gần nhất có giá">So phiên trước*</th><th class="r" title="So với giá phiên 1 (hoặc phiên sớm nhất có dữ liệu)">So phiên 1</th><th>Nguồn</th><th></th></tr>
     {% set base = p.eff('price_first') %}{% set ns = namespace(prev=none) %}
     {% for se in sessions %}{% set pn, n = se.pn, se.n %}
     <tr>
-      <td><b>{{ se.no }}</b>{% if pn.link_source == 'history' %} <span class="tag auto" title="Tìm được khi quét lịch sử theo từ khoá">lịch sử</span>{% elif pn.link_source == 'manual' %} <span class="tag manual" title="Do người dùng gộp/tách">TC</span>{% endif %}</td>
-      <td>{{ fmt.dt(n.auction_date) }}</td><td>{{ fmt.dt(n.registration_end) }}</td>
+      <td><b>Phiên {{ se.no }}</b>{% if pn.link_source == 'history' %} <span class="tag auto" title="Tìm được khi quét lịch sử theo từ khoá">lịch sử</span>{% elif pn.link_source == 'manual' %} <span class="tag manual" title="Do người dùng gộp/tách">TC</span>{% endif %}</td>
+      <td data-label="Ngày đấu giá">{{ fmt.dt(n.auction_date) }}</td><td data-label="Hạn đăng ký">{{ fmt.dt(n.registration_end) }}</td>
       {% set sp = se.price %}
-      <td class="r">{% if (n.property_count or 1) > 1 %}<span class="muted small" title="Thông báo gồm {{ n.property_count }} tài sản, mỗi tài sản một giá – xem mô tả">nhiều tài sản</span>{% else %}{{ fmt.money(sp, False) }}{% if se.price_note %} <span class="tag {{ 'doc' if sp != n.starting_price else 'warn' }}" title="{{ se.price_note }}">{{ 'theo thông báo' if sp != n.starting_price else 'giá cổng' }}</span>{% endif %}{% endif %}</td>
-      <td class="r">{% if sp and ns.prev and sp != ns.prev %}{{ '%+.1f'|format((sp - ns.prev) / ns.prev * 100) }}%{% endif %}</td>
-      <td class="r">{% if sp and base and sp != base %}{{ '%+.1f'|format((sp - base) / base * 100) }}%{% endif %}</td>
+      <td class="r" data-label="Giá khởi điểm">{% if (n.property_count or 1) > 1 %}<span class="muted small" title="Thông báo gồm {{ n.property_count }} tài sản, mỗi tài sản một giá – xem mô tả">nhiều tài sản</span>{% else %}{{ fmt.money(sp, False) }}{% if se.price_note %} <span class="tag {{ 'doc' if sp != n.starting_price else 'warn' }}" title="{{ se.price_note }}">{{ 'theo thông báo' if sp != n.starting_price else 'giá cổng' }}</span>{% endif %}{% endif %}</td>
+      <td class="r" data-label="So phiên trước">{% if sp and ns.prev and sp != ns.prev %}{{ '%+.1f'|format((sp - ns.prev) / ns.prev * 100) }}%{% endif %}</td>
+      <td class="r" data-label="So phiên 1">{% if sp and base and sp != base %}{{ '%+.1f'|format((sp - base) / base * 100) }}%{% endif %}</td>
       {% if sp %}{% set ns.prev = sp %}{% endif %}
-      <td><a href="{{ n.url }}" target="_blank" rel="noopener">{{ n.source }} ↗</a>
+      <td data-label="Nguồn"><a href="{{ n.url }}" target="_blank" rel="noopener">{{ n.source }} ↗</a>
         {% for dpn, dn in se.dups %}{% if dn.source != n.source %} · <a href="{{ dn.url }}" target="_blank" rel="noopener">{{ dn.source }} ↗</a>{% endif %}{% endfor %}
         {% if se.dups %}<span class="muted small" title="Số thông báo đăng cho phiên này">({{ se.dups|length + 1 }} tin)</span>{% endif %}</td>
       <td>{% if links|length > 1 %}
@@ -145,7 +145,7 @@
   {% if not folders %}<p class="muted">Chưa có file.</p>{% endif %}
   {% if saved %}
   <h3 class="folder">🗄 File đính kèm đã lưu trên máy chủ <span class="muted small">({{ saved|length }})</span></h3>
-  <table class="tbl small files">
+  <table class="tbl small files resp">
   {% for f in saved %}
     <tr><td>{% if f.path and not f.removed_at %}<a href="/nf/{{ f.id }}" target="_blank">{{ f.filename }}</a>
       {% else %}<a href="{{ f.url }}" target="_blank" rel="noopener" title="Mở file trên website nguồn">{{ f.filename }} ↗</a>{% endif %}
@@ -168,7 +168,7 @@
   {% for f in fl if f.kind == 'video' %}
     <div class="video"><video controls preload="metadata" src="/files/{{ f.id }}"></video><div class="small">{{ f.filename }}</div></div>
   {% endfor %}
-  <table class="tbl small files">
+  <table class="tbl small files resp">
   {% for f in fl %}
     <tr><td><a href="/files/{{ f.id }}" target="_blank">{{ f.filename }}</a>{% if f.source_url %} <span class="tag auto">nguồn</span>{% if f.source_url in txt_by_url %} · <a class="link small" href="/nf/{{ txt_by_url[f.source_url] }}?txt=1" target="_blank">xem chữ</a>{% endif %}{% endif %}</td>
       <td>{{ fmt.size(f.size) }}</td>

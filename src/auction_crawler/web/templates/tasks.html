@@ -13,15 +13,15 @@
 </nav>
 <div class="card">
 {% if not tasks %}<p class="muted">Không có việc.</p>{% endif %}
-<div class="tblwrap"><table class="tbl">
+<div class="tblwrap"><table class="tbl resp">
   {% if tasks %}<tr><th>Việc</th><th>Tài sản</th><th>Người giao → nhận</th><th>Hạn</th><th>Trạng thái</th></tr>{% endif %}
   {% for t in tasks %}
   <tr>
     <td><b>{{ t.title }}</b>{% if t.description %}<div class="small muted">{{ t.description }}</div>{% endif %}</td>
-    <td>{% if t.property %}<a href="/p/{{ t.property_id }}">#{{ t.property_id }} {{ t.property.title[:70] }}</a>{% endif %}</td>
-    <td class="small">{{ t.assigner.full_name }} → {{ t.assignee.full_name }}</td>
-    <td>{{ fmt.dt(t.due_date) }}{% if t.due_date and t.due_date < today and t.status in ('moi','dang_lam') %} <span class="dl expired">quá hạn</span>{% endif %}</td>
-    <td><form method="post" action="/tasks/{{ t.id }}/status"><input type="hidden" name="csrf" value="{{ csrf }}">
+    <td class="full" data-label="Tài sản">{% if t.property %}<a href="/p/{{ t.property_id }}">#{{ t.property_id }} {{ t.property.title[:70] }}</a>{% endif %}</td>
+    <td class="small" data-label="Giao → nhận">{{ t.assigner.full_name }} → {{ t.assignee.full_name }}</td>
+    <td data-label="Hạn">{{ fmt.dt(t.due_date) }}{% if t.due_date and t.due_date < today and t.status in ('moi','dang_lam') %} <span class="dl expired">quá hạn</span>{% endif %}</td>
+    <td class="full" data-label="Trạng thái"><form method="post" action="/tasks/{{ t.id }}/status"><input type="hidden" name="csrf" value="{{ csrf }}">
       <select name="status" onchange="this.form.submit()">{% for k, v in TASK_STATUS.items() %}<option value="{{ k }}" {{ 'selected' if k == t.status }}>{{ v }}</option>{% endfor %}</select></form></td>
   </tr>
   {% endfor %}
