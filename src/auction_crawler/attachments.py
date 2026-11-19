@@ -15,6 +15,7 @@ import logging
 import os
 import threading
 import re
+from collections import defaultdict
 import shutil
 import subprocess
 import tempfile
@@ -424,12 +425,15 @@ def _near(a: float, b: float, tol: float = 0.005) -> bool:
 
 
 def doc_price(doc: dict | None, portal: int | None, property_count: int | None = 1,
-              auction_date: datetime | date | None = None) -> tuple[int | None, str | None]:
+              auction_date: datetime | date | None = None, shared: bool = False) -> tuple[int | None, str | None]:
     """Giá khởi điểm của MỘT phiên: giá trên cổng, trừ khi file thông báo ghi rõ MỘT giá khởi điểm khác -> dùng giá trong
     thông báo. Chỉ thay khi chắc chắn file là của ĐÚNG phiên này và không phải số khác:
     - giá cổng trùng một số "giá khởi điểm" bất kỳ trong file (giá trước thuế, giá thành phần…) -> cổng đúng;
     - file ghi ngày đấu giá khác ngày của phiên -> file của phiên khác, giữ cổng;
     - chênh đúng 10% (thuế VAT, hoặc giá phiên trước/sau giảm 10%) mà file không ghi ngày khớp -> giữ cổng;
+    - chênh đúng 10% kiểu thuế (cổng = file × 1,1 hoặc ngược lại) -> giữ cổng (một bên gồm VAT, một bên chưa);
+    - chênh trên 20% mà file không ghi ngày khớp phiên -> giữ cổng (chưa chắc file thuộc phiên này);
+    - shared: cùng một giá trong file được đính kèm cho nhiều tin có giá cổng khác nhau (file chung) -> giữ cổng;
     - chênh quá 2 lần -> giữ cổng; bản scan: số phải khớp phần "Bằng chữ". Trả (giá, ghi chú)."""
     if (property_count or 1) != 1 or not doc or doc.get("multi"):
         return portal, None
@@ -450,7 +454,15 @@ def doc_price(doc: dict | None, portal: int | None, property_count: int | None =
     if portal and ad and dates and not date_ok:
         return portal, (f"File thông báo ghi giá {money(v)} nhưng là của phiên ngày "
                         f"{date.fromisoformat(dates[0]):%d/%m/%Y} – dùng giá cổng")
-    if portal and not date_ok and any(_near(v, portal * k, 0.003) for k in (0.9, 1 / 0.9, 1.1, 1 / 1.1)):
+    if portal and any(_near(v, portal * k, 0.003) for k in (1.1, 1 / 1.1)):
+        return portal, (f"File thông báo ghi {money(v)}, lệch đúng 10% so với cổng (giá gồm/chưa gồm thuế VAT) – "
+                        f"dùng giá cổng")
+    if portal and shared:
+        return portal, (f"File thông báo ({money(v)}) dùng chung cho nhiều tin có giá cổng khác nhau – dùng giá cổng")
+    if portal and not date_ok and abs(v - portal) > 0.2 * portal:
+        return portal, (f"File thông báo ghi {money(v)}, chênh hơn 20% so với cổng nhưng không ghi ngày đấu giá khớp "
+                        f"phiên này – dùng giá cổng")
+    if portal and not date_ok and any(_near(v, portal * k, 0.003) for k in (0.9, 1 / 0.9)):
         return portal, (f"File thông báo ghi {money(v)}, lệch đúng 10% so với cổng (thuế hoặc giá phiên trước/sau) – "
                         f"dùng giá cổng")
     method = (doc.get("methods") or {}).get("starting_price", "ocr")
@@ -460,6 +472,22 @@ def doc_price(doc: dict | None, portal: int | None, property_count: int | None =
                    f"thông báo" if portal else None)
     return portal, (f"Thông báo (OCR) ghi giá khởi điểm {money(v)}, khác giá trên cổng {money(portal)} – dùng giá cổng"
                     if portal else None)
+
+
+def shared_doc_prices(rows) -> set[int]:
+    """Giá trong file thông báo xuất hiện ở NHIỀU tin dgts (mỗi tin 1 tài sản) có giá cổng khác nhau -> file chung.
+    rows: [(source, giá cổng, số tài sản, doc_info)]."""
+    seen: dict[int, list[int]] = defaultdict(list)
+    for src, portal, cnt, doc in rows:
+        v = (doc or {}).get("starting_price")
+        if v and portal and src == "dgts" and (cnt or 1) == 1:
+            seen[v].append(portal)
+    out = set()
+    for v, ps in seen.items():
+        ps = sorted(ps)
+        if len(ps) > 1 and ps[-1] > ps[0] * 1.01:
+            out.add(v)
+    return out
 
 
 def info_from_text(text: str) -> dict[str, Any]:

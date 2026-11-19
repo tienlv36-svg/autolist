@@ -103,7 +103,7 @@ tự sửa trong `/root/autolist` (token GitHub trên VPS chỉ có quyền đ�
 - Giá taisancong (OCR từ PDF) chỉ là tham khảo, không phải giá chính thức.
 - Số liệu tài sản (diện tích, tờ/thửa, kích thước) ưu tiên lấy từ file đính kèm; OCR khác tin đăng → dùng tin đăng
   (`properties.field_sources`). Giá: file thông báo ghi rõ một giá khởi điểm khác cổng (chữ, hoặc scan mà số = “Bằng chữ”) và
-  chênh không quá 2 lần → dùng giá thông báo (bỏ câu tiền đặt trước “10% giá khởi điểm”, giá/m²; có “Tổng giá khởi điểm” thì lấy tổng; giữ cổng khi cổng trùng một giá trong file, file ghi ngày đấu giá khác phiên, lệch đúng 10%, giá thành phần/gói/lô). **Không lưu file gốc đính kèm** (người dùng chốt 19/11/2026): đọc xong thì xoá, chỉ giữ chữ `.txt` + thông số; lịch tự động xoá file gốc còn sót. Mở file qua link “Tài liệu nguồn”.
+  chênh không quá 2 lần → dùng giá thông báo (bỏ câu tiền đặt trước “10% giá khởi điểm”, giá/m²; có “Tổng giá khởi điểm” thì lấy tổng; giữ cổng khi cổng trùng một giá trong file, file ghi ngày đấu giá khác phiên, lệch đúng 10% (thuế VAT), chênh > 20% mà file không ghi ngày khớp, file dùng chung nhiều tin, giá thành phần/gói/lô). **Không lưu file gốc đính kèm** (người dùng chốt 19/11/2026): đọc xong thì xoá, chỉ giữ chữ `.txt` + thông số; lịch tự động xoá file gốc còn sót. Mở file qua link “Tài liệu nguồn”.
 
 ## An toàn – PHẢI hỏi người dùng trước khi
 

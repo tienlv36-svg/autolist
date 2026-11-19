@@ -212,11 +212,15 @@ def create_app(repo: Repository | None = None, media_root: Path | None = None,
                         sessions[-1]["n"] = n
                     continue
                 sessions.append({"no": pn.session_no, "pn": pn, "n": n, "dups": []})
-            from ..attachments import doc_price
+            from ..attachments import doc_price, shared_doc_prices
             for se in sessions:                         # giá phiên: theo thông báo nếu file ghi rõ giá khác cổng
                 n0 = se["n"]
+                dv = (n0.doc_info or {}).get("starting_price")
+                shared = bool(dv) and dv in shared_doc_prices(s.execute(
+                    select(NoticeRow.source, NoticeRow.starting_price, NoticeRow.property_count, NoticeRow.doc_info)
+                    .where(func.json_extract(NoticeRow.doc_info, "$.starting_price") == dv)).all())
                 se["price"], se["price_note"] = doc_price(n0.doc_info, n0.starting_price if (n0.property_count or 1) == 1
-                                                          else None, n0.property_count, n0.auction_date)
+                                                          else None, n0.property_count, n0.auction_date, shared)
             chart = fmt.price_chart([
                 (f"P{se['no']}" + (f" {se['n'].auction_date:%m/%y}" if se['n'].auction_date else ""),
                  se["price"],

@@ -26,7 +26,7 @@ from sqlalchemy import select, update
 from ..normalize import plausible_dt, strip_accents
 from ..storage import AssetRow, NoticeRow, Repository
 from .db import Activity, Comment, FileView, Property, PropertyFile, PropertyNotice, Task
-from ..attachments import doc_price
+from ..attachments import doc_price, shared_doc_prices
 from . import wardmap
 from .history import gcn_serials
 from .extract import RealEstateInfo, clause_location, extract, place_rejection, ward_key
@@ -152,6 +152,7 @@ def load_items(repo: Repository) -> list[Item]:
             assets[nid].extend(x for x in (name, place) if x)
             if place and not place_rejection(place):
                 places[nid].append(place)
+    shared = shared_doc_prices((r.source, r.starting_price, r.property_count, r.doc_info) for r in rows if r.doc_info)
     out = []
     for r in rows:
         cat = is_real_estate(r.asset_type, f"{r.title} {r.asset_name or ''}", r.official_type)
@@ -164,7 +165,8 @@ def load_items(repo: Repository) -> list[Item]:
             info.notes.append(f"Địa chỉ tài sản để trống: {bad_place}")
         price = r.starting_price if (r.property_count or 1) == 1 else None
         if r.doc_info:
-            price, pnote = doc_price(r.doc_info, price, r.property_count, plausible_dt(r.auction_date))
+            price, pnote = doc_price(r.doc_info, price, r.property_count, plausible_dt(r.auction_date),
+                                     (r.doc_info or {}).get("starting_price") in shared)
             if pnote:
                 info.notes.append(pnote)
         # giá: chỉ dùng giá chính thức khi nguồn đăng MỘT giá cho thông báo (kể cả gói "trọn gói" nhiều thửa

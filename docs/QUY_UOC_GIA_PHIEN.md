@@ -118,7 +118,9 @@ giá theo m²/tháng; có “Tổng giá khởi điểm” thì lấy tổng (b�
 thông báo bán nhiều lô trong khi cổng ghi 1 tài sản → không so giá giữa các phiên (không tính % giảm). Giữ giá cổng khi: giá cổng trùng một số
 “giá khởi điểm” bất kỳ trong file (giá trước thuế…); file ghi ngày tổ chức đấu giá khác ngày của phiên (file của phiên
 khác); lệch đúng 10% (thuế VAT, giá phiên trước/sau) mà file không ghi ngày khớp; giá thành phần (“Giá trị quyền sử dụng
-đất: …”) hoặc giá của một gói/lô (“Gói 1”, “7.1.”). Giá trị **nhập tay** luôn
+đất: …”) hoặc giá của một gói/lô (“Gói 1”, “7.1.”). Cũng giữ giá cổng khi: lệch đúng 10% kiểu thuế (cổng = file × 1,1 hoặc ngược lại, kể
+cả khi ngày khớp); chênh trên 20% mà file không ghi ngày đấu giá khớp phiên; cùng một giá trong file được đính kèm cho
+nhiều tin có giá cổng khác nhau (file chung nhiều tài sản). Giá trị **nhập tay** luôn
 được ưu tiên. Trên trang chi tiết: mục *“File đính kèm đã lưu trên máy chủ”* (mở file, xem chữ đã đọc); file nguồn
 đã lưu được mở từ máy chủ kể cả khi website nguồn gỡ.
 

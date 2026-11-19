@@ -376,11 +376,11 @@ def test_document_price_overrides_wrong_portal_price():
     assert labeled_starting_prices(txt) == {9_630_000_000}
     assert info_from_text(txt)["starting_price"] == 9_630_000_000
     doc = {"starting_price": 9_630_000_000, "methods": {"starting_price": "docx"}}
-    price, note = doc_price(doc, 6_635_000_000)
+    price, note = doc_price(doc, 8_300_000_000)
     assert price == 9_630_000_000 and "dùng giá trong thông báo" in note
     ocr = {"starting_price": 9_630_000_000, "methods": {"starting_price": "ocr"}}
-    price, note = doc_price(ocr, 6_635_000_000)
-    assert price == 6_635_000_000 and "dùng giá cổng" in note        # OCR không kèm chữ: giữ giá cổng
+    price, note = doc_price(ocr, 8_300_000_000)
+    assert price == 8_300_000_000 and "dùng giá cổng" in note        # OCR không kèm chữ: giữ giá cổng
     assert doc_price(doc, 9_630_000_000) == (9_630_000_000, None)
     two = txt + "\\nLô 2: Giá khởi điểm: 4.635.000.000 đồng"
     assert "starting_price" not in info_from_text(two)               # 2 giá khác nhau -> không lấy
@@ -399,13 +399,13 @@ def test_words_to_number_and_ocr_price_confirmed_by_words():
     assert info["starting_price"] == 9_630_000_000 and info["starting_price_words"] == 9_630_000_000
     ocr_ok = {"starting_price": 9_630_000_000, "starting_price_words": 9_630_000_000,
               "methods": {"starting_price": "ocr"}}
-    price, note = doc_price(ocr_ok, 6_635_000_000)
+    price, note = doc_price(ocr_ok, 8_300_000_000)
     assert price == 9_630_000_000 and "số và chữ khớp" in note       # bản scan, số = chữ -> tự sửa giá
     misread = {"starting_price": 9_680_000_000, "starting_price_words": 9_630_000_000,
                "methods": {"starting_price": "ocr"}}
     assert doc_price(misread, 9_630_000_000) == (9_630_000_000, None)  # OCR nhầm chữ số, phần chữ khớp cổng -> cổng
     unsure = {"starting_price": 9_680_000_000, "methods": {"starting_price": "ocr"}}
-    assert doc_price(unsure, 6_635_000_000)[0] == 6_635_000_000       # không có phần chữ -> chỉ cảnh báo
+    assert doc_price(unsure, 8_300_000_000)[0] == 8_300_000_000       # không có phần chữ -> chỉ cảnh báo
 
 
 def test_doc_price_ignores_deposit_unit_prices_and_far_values():
@@ -428,7 +428,8 @@ def test_doc_price_ignores_deposit_unit_prices_and_far_values():
     assert doc_price(doc, 334_000_000) == (334_000_000, None)
     # chênh vừa phải, file chữ -> dùng giá thông báo
     doc = {"starting_price": 3_625_000_000, "methods": {"starting_price": "text"}}
-    assert doc_price(doc, 2_400_000_000)[0] == 3_625_000_000
+    assert doc_price(doc, 3_200_000_000)[0] == 3_625_000_000
+    assert doc_price(doc, 2_400_000_000)[0] == 2_400_000_000     # chênh > 20%, file không ghi ngày -> cổng
 
 
 def test_default_reads_then_deletes_files_and_purge(env, monkeypatch):
@@ -472,3 +473,25 @@ def test_doc_price_vat_components_lots_and_other_session():
     assert p == 64_000_000_000 and "15/10/2026" in note
     # cùng ngày -> tin file (kể cả lệch đúng 10%)
     assert doc_price(d, 86_000_000_000, 1, datetime(2026, 10, 15, 9))[0] == 95_300_000_000
+
+
+def test_doc_price_vat_gap_big_gap_needs_date_and_shared_file():
+    from datetime import datetime
+    from auction_crawler.attachments import doc_price, shared_doc_prices
+    doc = {"starting_price": 176_675_678_437, "auction_dates": ["2026-10-22"], "methods": {"starting_price": "text"}}
+    # cổng = file × 1,1 (thuế VAT), kể cả khi ngày khớp -> giữ cổng
+    p, note = doc_price(doc, 194_343_246_281, 1, datetime(2026, 10, 22, 9))
+    assert p == 194_343_246_281 and "VAT" in note
+    # chênh > 20%: chỉ tin file khi ngày khớp
+    doc = {"starting_price": 95_300_000_000, "methods": {"starting_price": "text"}}
+    p, note = doc_price(doc, 64_000_000_000)
+    assert p == 64_000_000_000 and "20%" in note
+    doc["auction_dates"] = ["2026-11-20"]
+    assert doc_price(doc, 64_000_000_000, 1, datetime(2026, 11, 20, 9))[0] == 95_300_000_000
+    # một file chung cho 3 tin có giá cổng khác nhau
+    d = {"starting_price": 309_735_000}
+    shared = shared_doc_prices([("dgts", 313_100_000, 1, d), ("dgts", 313_100_000, 1, d), ("dgts", 303_000_000, 1, d)])
+    assert shared == {309_735_000}
+    p, note = doc_price({**d, "methods": {"starting_price": "text"}}, 303_000_000, 1, None, True)
+    assert p == 303_000_000 and "dùng chung" in note
+    assert shared_doc_prices([("dgts", 313_100_000, 1, d), ("taisancong", 300_000_000, 1, d)]) == set()
