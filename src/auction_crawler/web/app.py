@@ -216,7 +216,7 @@ def create_app(repo: Repository | None = None, media_root: Path | None = None,
             for se in sessions:                         # giá phiên: theo thông báo nếu file ghi rõ giá khác cổng
                 n0 = se["n"]
                 se["price"], se["price_note"] = doc_price(n0.doc_info, n0.starting_price if (n0.property_count or 1) == 1
-                                                          else None, n0.property_count)
+                                                          else None, n0.property_count, n0.auction_date)
             chart = fmt.price_chart([
                 (f"P{se['no']}" + (f" {se['n'].auction_date:%m/%y}" if se['n'].auction_date else ""),
                  se["price"],

@@ -446,3 +446,29 @@ def test_default_reads_then_deletes_files_and_purge(env, monkeypatch):
         assert not any((s.path(s.data_dir) / f.path).exists() for f in files if f.path)
         assert any((s.path(s.data_dir) / (f.path + ".txt")).exists() for f in files if f.path and f.chars)
     assert purge_files(s, repo) == (0, 0)
+
+
+def test_doc_price_vat_components_lots_and_other_session():
+    from datetime import datetime
+    from auction_crawler.attachments import doc_price, info_from_text, labeled_prices_with_words
+    # #537: cổng = giá trước thuế, "tổng" = có VAT -> giữ cổng
+    t = ("Giá khởi điểm của tài sản: 28.036.995.099 đồng. Thuế VAT 10%. Tổng giá khởi điểm: 30.840.694.608 đồng")
+    d = info_from_text(t); d["methods"] = {"starting_price": "text"}
+    assert doc_price(d, 28_036_995_099) == (28_036_995_099, None)
+    # #12992: giá thành phần (giá trị QSDĐ) không phải giá cả thông báo
+    assert labeled_prices_with_words("3. Giá khởi điểm: - Giá trị quyền sử dụng đất: 15.097.244.406 đồng") == []
+    # #11800 / #15896: giá của một gói / mục 7.1
+    assert labeled_prices_with_words("Tài sản đấu giá: Gói 1 – QSDĐ thửa 12. Giá khởi điểm: 5.108.840.000 đồng") == []
+    assert labeled_prices_with_words("7.1. Giá khởi điểm: 1.540.454.000 đồng") == []
+    # lệch đúng 10%, file không ghi ngày -> giữ cổng
+    d = {"starting_price": 3_080_947_500, "methods": {"starting_price": "text"}}
+    p, note = doc_price(d, 3_423_275_000)
+    assert p == 3_423_275_000 and "10%" in note
+    # file ghi ngày đấu giá khác ngày của phiên -> file của phiên khác
+    t = ("Thời gian tổ chức cuộc đấu giá: 09 giờ 00 ngày 15/10/2026. Giá khởi điểm: 95.300.000.000 đồng")
+    d = info_from_text(t); d["methods"] = {"starting_price": "text"}
+    assert d["auction_dates"] == ["2026-10-15"]
+    p, note = doc_price(d, 64_000_000_000, 1, datetime(2026, 11, 20, 9))
+    assert p == 64_000_000_000 and "15/10/2026" in note
+    # cùng ngày -> tin file (kể cả lệch đúng 10%)
+    assert doc_price(d, 86_000_000_000, 1, datetime(2026, 10, 15, 9))[0] == 95_300_000_000

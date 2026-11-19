@@ -22,7 +22,7 @@ import time
 import zipfile
 from dataclasses import dataclass, field
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote, unquote
@@ -355,7 +355,12 @@ def labeled_starting_prices(text: str) -> set[int]:
 # câu nói về MỘT PHẦN giá khởi điểm (tiền đặt trước "10% giá khởi điểm", bước giá…) hoặc giá theo đơn vị (/m², /tháng)
 _NOT_PRICE_BEFORE = re.compile(r"(%|phan tram|dat truoc|tien coc|dat coc|buoc gia|bang\s*\d|toi thieu|so voi)[^.;:\n]{0,40}$")
 _NOT_PRICE_GAP = re.compile(r"%|phan tram|dat truoc|buoc gia|m2|/\s*m|mot\s*(m|met|thang|nam)|/\s*thang|/\s*nam|"
-                            r"moi\s*(m|thang|nam)|thue|tra\s*gia\s*toi\s*thieu")
+                            r"moi\s*(m|thang|nam)|thue|tra\s*gia\s*toi\s*thieu|"
+                            # giá THÀNH PHẦN: "- Giá trị quyền sử dụng đất: N", "nhà/tài sản trên đất: N"
+                            r"gia\s*tri|quyen\s*su\s*dung|tren\s*dat|cong\s*trinh|nha\s*o|vat\s*kien\s*truc")
+# một LÔ / GÓI trong thông báo nhiều lô: "Gói 1 … Giá khởi điểm", "7.1. Giá khởi điểm", "Lô số 2"
+_LOT_BEFORE = re.compile(r"(\bgoi\s*(so\s*)?\d|\blo\s*(so\s*)?\d|tai\s*san\s*(so\s*)?\d+\s*[:.)-]|"
+                         r"(?:^|\s)\d+\.\d+\.?\s*$)")
 _NOT_PRICE_AFTER = re.compile(r"^\s*(dong|vnd|d)?\s*(/\s*(m|thang|nam)|mot\s*(m|thang|nam)|m2)")
 MAX_DOC_RATIO = 2.0          # giá thông báo chênh giá cổng quá 2 lần -> không thay (gần như chắc chắn đọc nhầm số khác)
 
@@ -364,7 +369,7 @@ def labeled_prices_with_words(text: str) -> list[tuple[int, int | None]]:
     """[(số, số đọc từ "Bằng chữ: …" ngay sau, nếu có)] của các giá khởi điểm. Bỏ: "10% giá khởi điểm: N" (tiền đặt
     trước), giá theo m²/tháng. Có "TỔNG giá khởi điểm" -> chỉ lấy (các) số tổng (giá thành phần QSDĐ + nhà… bỏ qua)."""
     norm = strip_accents(text or "")
-    out, totals = [], []
+    out, totals, lots = [], [], []
     for m in _PRICE_RE.finditer(norm):
         v = int(re.sub(r"\D", "", m.group(1)))
         if v < 1_000_000:
@@ -374,18 +379,58 @@ def labeled_prices_with_words(text: str) -> list[tuple[int, int | None]]:
         if (_NOT_PRICE_BEFORE.search(before) or _NOT_PRICE_GAP.search(gap)
                 or _NOT_PRICE_AFTER.search(norm[m.end():m.end() + 25])):
             continue
+        if _LOT_BEFORE.search(norm[max(0, m.start() - 300):m.start()].split("\n\n")[-1][-300:]):
+            lots.append(v)                            # giá của một lô/gói -> không phải giá cả thông báo
+            continue
         wm = _WORDS_RE.search(norm[m.end():m.end() + 260])
         item = (v, words_to_number(wm.group(1)) if wm else None)
         out.append(item)
         if re.search(r"tong\s*(cong\s*)?$", before.rstrip(" :")) or re.search(r"\btong\b", gap):
             totals.append(item)
+    if lots:
+        return []                                     # thông báo chia lô/gói: không lấy một giá chung
     return totals or out
 
 
-def doc_price(doc: dict | None, portal: int | None, property_count: int | None = 1) -> tuple[int | None, str | None]:
+def all_labeled_prices(text: str) -> list[int]:
+    """MỌI số đứng sau nhãn "giá khởi điểm" (kể cả giá thành phần, tổng có thuế…) – để đối chiếu giá cổng."""
+    norm = strip_accents(text or "")
+    return sorted({int(re.sub(r"\D", "", m.group(1))) for m in _PRICE_RE.finditer(norm)
+                   if int(re.sub(r"\D", "", m.group(1))) >= 1_000_000})
+
+
+_AUCTION_LABEL = re.compile(r"(?:thoi\s*gian|to\s*chuc)[^.:\n]{0,40}?(?:cuoc|phien|buoi)\s*dau\s*gia")
+_DATE_RE = re.compile(r"(\d{1,2})\s*[/.-]\s*(\d{1,2})\s*[/.-]\s*(20\d\d)|"
+                      r"ngay\s*(\d{1,2})\s*thang\s*(\d{1,2})\s*nam\s*(20\d\d)")
+
+
+def auction_dates(text: str) -> list[str]:
+    """Ngày tổ chức cuộc đấu giá ghi trong file ("Thời gian tổ chức cuộc đấu giá: 9 giờ, ngày 25/11/2026") -> ["2026-11-25"]."""
+    norm = strip_accents(text or "")
+    out = set()
+    for m in _AUCTION_LABEL.finditer(norm):
+        d = _DATE_RE.search(norm, m.end(), m.end() + 160)
+        if d:
+            dd, mm, yy = (d.group(1), d.group(2), d.group(3)) if d.group(1) else (d.group(4), d.group(5), d.group(6))
+            try:
+                out.add(date(int(yy), int(mm), int(dd)).isoformat())
+            except ValueError:
+                pass
+    return sorted(out)
+
+
+def _near(a: float, b: float, tol: float = 0.005) -> bool:
+    return bool(a and b) and abs(a - b) <= tol * b
+
+
+def doc_price(doc: dict | None, portal: int | None, property_count: int | None = 1,
+              auction_date: datetime | date | None = None) -> tuple[int | None, str | None]:
     """Giá khởi điểm của MỘT phiên: giá trên cổng, trừ khi file thông báo ghi rõ MỘT giá khởi điểm khác -> dùng giá trong
-    thông báo. File đọc được chữ: tin luôn. Bản scan (OCR): tin khi số và phần "Bằng chữ" khớp nhau. Chênh giá cổng quá
-    2 lần -> KHÔNG thay (thường là số khác: tiền đặt trước, giá/m², tổng nhiều tài sản), giữ giá cổng. Trả (giá, ghi chú)."""
+    thông báo. Chỉ thay khi chắc chắn file là của ĐÚNG phiên này và không phải số khác:
+    - giá cổng trùng một số "giá khởi điểm" bất kỳ trong file (giá trước thuế, giá thành phần…) -> cổng đúng;
+    - file ghi ngày đấu giá khác ngày của phiên -> file của phiên khác, giữ cổng;
+    - chênh đúng 10% (thuế VAT, hoặc giá phiên trước/sau giảm 10%) mà file không ghi ngày khớp -> giữ cổng;
+    - chênh quá 2 lần -> giữ cổng; bản scan: số phải khớp phần "Bằng chữ". Trả (giá, ghi chú)."""
     if (property_count or 1) != 1 or not doc or doc.get("multi"):
         return portal, None
     v = doc.get("starting_price")
@@ -394,10 +439,21 @@ def doc_price(doc: dict | None, portal: int | None, property_count: int | None =
         return portal, None
     if portal and words and abs(words - portal) <= 0.01 * portal:
         return portal, None                           # OCR đọc nhầm chữ số, phần bằng chữ khớp giá cổng -> cổng đúng
+    if portal and any(_near(x, portal, 0.002) for x in doc.get("all_prices") or []):
+        return portal, None                           # cổng = một giá ghi trong file (vd giá trước thuế) -> cổng đúng
     if portal and not (1 / MAX_DOC_RATIO <= v / portal <= MAX_DOC_RATIO):
         return portal, None                           # chênh quá xa: không phải cùng một giá -> tin giá cổng, không báo
-    method = (doc.get("methods") or {}).get("starting_price", "ocr")
     from .web.fmt import money
+    dates = doc.get("auction_dates") or []
+    ad = auction_date.date() if isinstance(auction_date, datetime) else auction_date
+    date_ok = bool(ad and dates and any(abs((date.fromisoformat(d) - ad).days) <= 1 for d in dates))
+    if portal and ad and dates and not date_ok:
+        return portal, (f"File thông báo ghi giá {money(v)} nhưng là của phiên ngày "
+                        f"{date.fromisoformat(dates[0]):%d/%m/%Y} – dùng giá cổng")
+    if portal and not date_ok and any(_near(v, portal * k, 0.003) for k in (0.9, 1 / 0.9, 1.1, 1 / 1.1)):
+        return portal, (f"File thông báo ghi {money(v)}, lệch đúng 10% so với cổng (thuế hoặc giá phiên trước/sau) – "
+                        f"dùng giá cổng")
+    method = (doc.get("methods") or {}).get("starting_price", "ocr")
     if method != "ocr" or (words and words == v):
         how = "" if method != "ocr" else " (bản scan, số và chữ khớp nhau)"
         return v, (f"Giá trên cổng ({money(portal)}) khác giá ghi trong thông báo ({money(v)}){how} – dùng giá trong "
@@ -417,6 +473,10 @@ def info_from_text(text: str) -> dict[str, Any]:
         if info.notes:
             out["notes"] = info.notes[:5]
     if not out.get("multi"):
+        if (ap := all_labeled_prices(text)):
+            out["all_prices"] = ap[:20]
+        if (ad := auction_dates(text)):
+            out["auction_dates"] = ad[:5]
         found = labeled_prices_with_words(text)
         if len({v for v, _ in found}) == 1:       # đúng MỘT giá khởi điểm ghi rõ trong văn bản
             out["starting_price"] = found[0][0]
@@ -440,6 +500,10 @@ def merge_file_infos(infos: list[tuple[dict, str]]) -> dict[str, Any]:
         out["multi"] = True
         out["notes"].append("Tài liệu gồm nhiều thửa/lô – không lấy số liệu từ tài liệu")
         return out
+    for f in ("all_prices", "auction_dates"):     # danh sách: gộp mọi file
+        vals = sorted({x for i, _ in infos for x in (i.get(f) or [])})
+        if vals:
+            out[f] = vals[:30]
     for f in (*DOC_FIELDS, "ward", "province", "starting_price", "starting_price_words"):
         vals = [(i[f], m) for i, m in infos if i.get(f) not in (None, "")]
         if not vals:

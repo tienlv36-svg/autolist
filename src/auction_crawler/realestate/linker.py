@@ -164,7 +164,7 @@ def load_items(repo: Repository) -> list[Item]:
             info.notes.append(f"Địa chỉ tài sản để trống: {bad_place}")
         price = r.starting_price if (r.property_count or 1) == 1 else None
         if r.doc_info:
-            price, pnote = doc_price(r.doc_info, price, r.property_count)
+            price, pnote = doc_price(r.doc_info, price, r.property_count, plausible_dt(r.auction_date))
             if pnote:
                 info.notes.append(pnote)
         # giá: chỉ dùng giá chính thức khi nguồn đăng MỘT giá cho thông báo (kể cả gói "trọn gói" nhiều thửa
