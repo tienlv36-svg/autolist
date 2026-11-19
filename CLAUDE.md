@@ -12,7 +12,7 @@ không phải lập trình viên: giải thích ngắn gọn, dễ hiểu, nói 
 | Môi trường Python | `/opt/autolist/.venv` – lệnh CLI: `/opt/autolist/.venv/bin/auction` |
 | Cơ sở dữ liệu | `/opt/autolist/data/auction.db` (SQLite) |
 | File tải lên | `/opt/autolist/data/media/` |
-| File đính kèm của tài sản còn hạn (lưu vĩnh viễn) | `/opt/autolist/data/files/<nguồn>/<năm-tháng>/<mã tin>/` (+ `.txt` chữ đã đọc), bảng `notice_files` |
+| Chữ đọc từ file đính kèm | `/opt/autolist/data/files/<nguồn>/<năm-tháng>/<mã tin>/*.txt`, bảng `notice_files`. **Không lưu file gốc** (`docs_store_files: false`): tải về, đọc lấy số liệu rồi xoá; người dùng mở file qua link nguồn |
 | Cấu hình | `/opt/autolist/config/settings.yaml`, nguồn: `config/sources/*.yaml`, phân loại: `config/categories.yaml` |
 | Bí mật (KHÔNG in ra, KHÔNG gửi đi) | `data/secret.key`, `data/telegram.json`, `~auction/.config/rclone/rclone.conf` |
 | Bản sao lưu | `/opt/autolist/backups/` (sau lượt quét 2:00 và sau lượt lấp dữ liệu nếu đã quá 6 giờ, giữ 28 bản; + Google Drive nếu cấu hình). `data/files` không nằm trong bản nén (quá lớn); có file `data/.drive_files` thì đồng bộ dần lên Drive |
@@ -54,7 +54,8 @@ Các lệnh CLI hay dùng (`auction --help` để xem đủ):
 | `docs-fetch -m PHÚT [-n N]` | Tải, lưu, đọc file đính kèm (còn hạn trước) rồi gom phiên lại |
 | `docs-reparse` | Trích lại số liệu từ chữ đã lưu (không tải lại) rồi gom phiên lại |
 | `ward-map-import <file> [--province T]`, `ward-map-stats` | Nạp/xem bảng xã cũ → mới 2025 (`data/ward_mapping.csv`; sau khi nạp chạy `docs-reparse`) |
-| `docs-compress -m PHÚT`, `docs-prune --days N` | Nén bản scan đã lưu; dọn file gốc tài sản hết hạn quá N ngày (xoá dữ liệu – hỏi trước) |
+| `docs-purge --yes` | Xoá hết file gốc đính kèm còn sót (giữ chữ `.txt`; xoá dữ liệu – người dùng đã yêu cầu 19/11/2026) |
+| `docs-compress -m PHÚT`, `docs-prune --days N` | Chỉ dùng khi bật lại `docs_store_files: true` |
 | `alerts` | Gửi ngay bộ lọc đã lưu + nhắc hạn vào Telegram cá nhân (gửi tin – hỏi người dùng trước) |
 | `dedupe`, `tag-types` | Tin trùng giữa 2 nguồn; loại tài sản chính thức (dgts) |
 | `stats`, `export -f xlsx` | Thống kê nhanh; xuất Excel ra `data/exports/` |
@@ -102,10 +103,7 @@ tự sửa trong `/root/autolist` (token GitHub trên VPS chỉ có quyền đ�
 - Giá taisancong (OCR từ PDF) chỉ là tham khảo, không phải giá chính thức.
 - Số liệu tài sản (diện tích, tờ/thửa, kích thước) ưu tiên lấy từ file đính kèm; OCR khác tin đăng → dùng tin đăng
   (`properties.field_sources`). Giá: file thông báo ghi rõ một giá khởi điểm khác cổng (chữ, hoặc scan mà số = “Bằng chữ”) và
-  chênh không quá 2 lần → dùng giá thông báo (bỏ câu tiền đặt trước “10% giá khởi điểm”, giá/m²; có “Tổng giá khởi điểm” thì lấy tổng). **Lịch tự động** dọn file gốc của tài sản hết hạn không ra
-  phiên mới (`docs-prune`, giữ `.txt` và thông số; trừ giỏ hàng/ưu tiên cao): quá 30 ngày → quy chế/thông báo; quá 90
-  ngày → mọi file. Bản vẽ sơ đồ thửa đất, sổ hồng, ảnh… giữ tới 90 ngày. Ổ dùng ≥ 80%: lịch tự dọn sớm cả file tài sản đã hết hạn chưa đủ 30 ngày (hết hạn lâu nhất trước) tới khi ổ <
-  75%. Ngoài lịch đó, **không tự xoá** `data/files/` khi chưa được yêu cầu.
+  chênh không quá 2 lần → dùng giá thông báo (bỏ câu tiền đặt trước “10% giá khởi điểm”, giá/m²; có “Tổng giá khởi điểm” thì lấy tổng). **Không lưu file gốc đính kèm** (người dùng chốt 19/11/2026): đọc xong thì xoá, chỉ giữ chữ `.txt` + thông số; lịch tự động xoá file gốc còn sót. Mở file qua link “Tài liệu nguồn”.
 
 ## An toàn – PHẢI hỏi người dùng trước khi
 

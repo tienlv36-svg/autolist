@@ -140,15 +140,24 @@ def _docs_then_rebuild(settings: Settings, repo: Repository, minutes: float):
                     min_days=float(sch.get("docs_min_days", 2)), max_file_mb=float(sch.get("docs_max_file_mb", 25)),
                     text_only_expired=bool(sch.get("docs_text_only_expired", True)),
                     keep_days=int(sch.get("docs_keep_expired_days", 30)),
-                    all_days=int(sch.get("docs_delete_all_days", 90)))
+                    all_days=int(sch.get("docs_delete_all_days", 90)),
+                    store_files=_store(settings))
     if st.notices:
         rebuild(repo)
     return st
 
 
+def _store(settings: Settings) -> bool:
+    """docs_store_files: true -> lưu file gốc đính kèm trên máy chủ; mặc định false: chỉ đọc lấy số liệu, mở file qua
+    link nguồn."""
+    return bool(settings.schedule.get("docs_store_files", False))
+
+
 def _prune(settings: Settings, repo: Repository) -> tuple[int, int]:
-    from .attachments import prune_expired
+    from .attachments import prune_expired, purge_files
     sch = settings.schedule
+    if not _store(settings):
+        return purge_files(settings, repo)            # không lưu file gốc: xoá phần còn sót (giữ chữ đã đọc)
     return prune_expired(settings, repo, days=int(sch.get("docs_keep_expired_days", 30)),
                          pressure_pct=float(sch.get("docs_pressure_prune_pct", 80)),
                          target_pct=float(sch.get("docs_pressure_target_pct", 75)),
@@ -157,6 +166,8 @@ def _prune(settings: Settings, repo: Repository) -> tuple[int, int]:
 
 def _compress(settings: Settings, repo: Repository) -> tuple[int, int]:
     from .attachments import compress_existing
+    if not _store(settings):
+        return 0, 0
     minutes = float(settings.schedule.get("docs_compress_minutes", 30))
     try:
         if disk_usage_pct(settings.path("data")) >= 80:

@@ -89,7 +89,7 @@ def test_fetch_docs_saves_files_and_prefers_document(env, monkeypatch):
     from auction_crawler import pipeline
     orig = pipeline.make_fetcher
     monkeypatch.setattr(pipeline, "make_fetcher", lambda st, src, transport=None: orig(st, src, mock(calls)))
-    st = fetch_docs(s, repo, minutes=5, workers=1)
+    st = fetch_docs(s, repo, minutes=5, workers=1, store_files=True)
     # tài sản còn hạn trước; sau đó tài sản năm 2026 đã hết hạn còn thiếu thông tin
     assert st.notices == 2 and st.files == 4 and st.with_info == 2
     assert calls[0].endswith("auctionInfoId=11") and any("auctionInfoId=12" in c for c in calls)
@@ -429,3 +429,20 @@ def test_doc_price_ignores_deposit_unit_prices_and_far_values():
     # chênh vừa phải, file chữ -> dùng giá thông báo
     doc = {"starting_price": 3_625_000_000, "methods": {"starting_price": "text"}}
     assert doc_price(doc, 2_400_000_000)[0] == 3_625_000_000
+
+
+def test_default_reads_then_deletes_files_and_purge(env, monkeypatch):
+    from auction_crawler.attachments import purge_files
+    s, repo = env
+    calls: list[str] = []
+    from auction_crawler import pipeline
+    orig = pipeline.make_fetcher
+    monkeypatch.setattr(pipeline, "make_fetcher", lambda st, src, transport=None: orig(st, src, mock(calls)))
+    st = fetch_docs(s, repo, minutes=5, workers=1)                 # mặc định: không lưu file gốc
+    assert st.notices == 2 and st.with_info == 2
+    with repo.session() as ss:
+        files = ss.query(NoticeFile).all()
+        assert files and all(f.removed_at for f in files if f.path)
+        assert not any((s.path(s.data_dir) / f.path).exists() for f in files if f.path)
+        assert any((s.path(s.data_dir) / (f.path + ".txt")).exists() for f in files if f.path and f.chars)
+    assert purge_files(s, repo) == (0, 0)

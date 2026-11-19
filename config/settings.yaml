@@ -26,6 +26,7 @@ schedule:                        # dùng với lệnh `auction schedule`
   ocr_limit: 0                   # >0: mỗi lượt OCR giá từ PDF cho N tin taisancong (cần tesseract)
   docs_minutes: 180              # lượt chính 2:00: đọc file đính kèm tối đa N phút (0 = tắt); còn lại để lượt lấp dữ liệu
   docs_max_file_mb: 25           # file đính kèm lớn hơn N MB: không tải, chỉ lưu đường link tới file gốc
+  docs_store_files: false        # false: chỉ đọc file đính kèm lấy số liệu rồi xoá (mở file qua link nguồn); true: lưu file gốc
   docs_text_only_expired: true   # tài sản hết hạn quá docs_keep_expired_days: chỉ đọc lấy thông số, không giữ file gốc
   docs_keep_expired_days: 30     # hết hạn quá N ngày: dọn quy chế/thông báo (giữ chữ đã đọc; trừ giỏ hàng, ưu tiên cao)
   docs_delete_all_days: 90       # hết hạn quá N ngày: dọn HẾT file, kể cả bản vẽ sơ đồ thửa đất, sổ hồng, ảnh

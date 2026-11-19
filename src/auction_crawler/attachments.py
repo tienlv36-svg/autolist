@@ -27,7 +27,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import quote, unquote
 
-from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, and_, case, func, select
+from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, and_, case, func, select, update
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .config import Settings
@@ -163,6 +163,29 @@ def prune_expired(settings: Settings, repo: Repository, days: int = 30, now: dat
             s.get(NoticeFile, fid).removed_at = now
     log.info("Dọn file tài sản hết hạn%s: %s file, %.1f GB",
              " (ổ gần đầy – dọn sớm quy chế/thông báo)" if pressure else "", n, freed / 1e9)
+    return n, freed
+
+
+def purge_files(settings: Settings, repo: Repository) -> tuple[int, int]:
+    """Xoá MỌI file gốc đính kèm đã lưu (giữ chữ đã đọc .txt và thông số; file vẫn mở được qua link nguồn).
+    Trả (số file, số byte)."""
+    base = settings.path(settings.data_dir)
+    with repo.session() as s:
+        rows = s.execute(select(NoticeFile.id, NoticeFile.path, NoticeFile.size)
+                         .where(NoticeFile.path.is_not(None), NoticeFile.removed_at.is_(None))).all()
+    n = freed = 0
+    now = datetime.now()
+    for i in range(0, len(rows), 500):
+        chunk = rows[i:i + 500]
+        for _, rel, size in chunk:
+            f = base / rel
+            if f.exists():
+                f.unlink()
+                freed += size or 0
+                n += 1
+        with repo.Session.begin() as s:
+            s.execute(update(NoticeFile).where(NoticeFile.id.in_([r[0] for r in chunk])).values(removed_at=now))
+    log.info("Xoá file gốc đính kèm: %s file, %.1f GB (giữ chữ đã đọc)", n, freed / 1e9)
     return n, freed
 
 
@@ -532,7 +555,9 @@ class _Skip(Exception):
 
 def process_notice(nid: int, repo: Repository, settings: Settings, fetchers: dict, stats: DocStats,
                    ocr_max_pages: int = 8, max_bytes: int = 25 * 1048576, text_only_expired: bool = True,
-                   keep_days: int = 30, all_days: int = 90) -> dict[str, Any]:
+                   keep_days: int = 30, all_days: int = 90, store_files: bool = False) -> dict[str, Any]:
+    """store_files=False (mặc định): tải file về, đọc lấy chữ + thông số rồi XOÁ file gốc (chỉ giữ chữ .txt);
+    người dùng mở file qua đường link nguồn."""
     base = settings.path(settings.data_dir)
     with repo.session() as s:
         n = s.get(NoticeRow, nid)
@@ -544,6 +569,8 @@ def process_notice(nid: int, repo: Repository, settings: Settings, fetchers: dic
         # hết hạn quá keep_days ngày (không ra phiên mới): chỉ đọc lấy thông số, không giữ file gốc
         text_only = text_only_expired and bool(reg_end and reg_end < datetime.now() - timedelta(days=keep_days))
         drop_all = text_only and bool(reg_end and reg_end < datetime.now() - timedelta(days=all_days))
+        if not store_files:
+            text_only = drop_all = True
         fetcher = _fetcher(fetchers, settings, src_name)
         # nguồn đôi khi liệt kê CÙNG một file 2 lần trong một tin -> bỏ trùng theo đường dẫn
         files = sorted({u: (nm, u) for nm, u in reversed(list_files(n, fetcher))}.values(), key=lambda f: _file_rank(f[0]))
@@ -597,7 +624,8 @@ def process_notice(nid: int, repo: Repository, settings: Settings, fetchers: dic
                 if keep_file:
                     nf.compress_level = 2
                 # hết hạn > 30 ngày: quy chế/thông báo chỉ đọc rồi bỏ; sơ đồ thửa, sổ hồng… vẫn lưu (tới 90 ngày)
-                if text_only and method not in ("deferred", "unsupported") and (drop_all or is_core_doc(nf.filename)):
+                if not store_files or (text_only and method not in ("deferred", "unsupported")
+                                       and (drop_all or is_core_doc(nf.filename))):
                     p.unlink(missing_ok=True)             # tài sản đã hết hạn: chỉ giữ chữ đã đọc
                     nf.removed_at = datetime.now()
                 stats.ocr_files += method == "ocr"
@@ -651,7 +679,7 @@ def default_workers() -> int:
 def fetch_docs(settings: Settings, repo: Repository, *, minutes: float = 300, limit: int = 100_000,
                max_disk_pct: float = 85, ocr_max_pages: int = 8, workers: int = 0, min_days: float = 2,
                max_file_mb: float = 25, text_only_expired: bool = True, keep_days: int = 30,
-               all_days: int = 90) -> DocStats:
+               all_days: int = 90, store_files: bool = False) -> DocStats:
     """Tải + đọc file đính kèm cho các tin chưa xử lý, song song nhiều tin, trong giới hạn thời gian / ổ cứng."""
     stats = DocStats()
     deadline = time.monotonic() + minutes * 60
@@ -665,7 +693,7 @@ def fetch_docs(settings: Settings, repo: Repository, *, minutes: float = 300, li
         st = DocStats()
         try:
             process_notice(nid, repo, settings, fetchers, st, ocr_max_pages, int(max_file_mb * 1048576),
-                           text_only_expired, keep_days, all_days)
+                           text_only_expired, keep_days, all_days, store_files)
         except Exception as e:  # noqa: BLE001
             if is_outage(e):                         # website nguồn sập/bảo trì: không tính lỗi cho tin, dừng lượt
                 outage.append(repr(e)[:200])

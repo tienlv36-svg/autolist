@@ -244,10 +244,14 @@ def create_app(repo: Repository | None = None, media_root: Path | None = None,
                                     .order_by(CartItem.added_at)).all() if user.role == "admin" else []
             saved = sorted(s.scalars(select(NoticeFile).where(NoticeFile.notice_id.in_(list(sess_no)))).all(),
                            key=lambda f: (-sess_no.get(f.notice_id, 0), f.filename))
+            # chữ đã đọc của từng file nguồn (theo link) -> nút "xem chữ" ngay cạnh link nguồn
+            txt_by_url = {f.url: f.id for f in saved if f.chars and f.path}
+            saved = [f for f in saved if f.path and not f.removed_at] if not settings.schedule.get(
+                "docs_store_files", False) else saved
             return render(request, "detail.html", user, p=p, links=links, sessions=sessions, ocr_refs=ocr_refs, latest=latest, assets=assets,
                           folders=folders, users=users, views=views, comments=comments, tasks=tasks, acts=acts,
                           edit=edit, now=datetime.now(), today=date.today(), docs_pending=docs_pending, msg=msg,
-                          saved=saved, sess_no=sess_no, METHODS=DOC_METHODS, chart=chart,
+                          saved=saved, txt_by_url=txt_by_url, sess_no=sess_no, METHODS=DOC_METHODS, chart=chart,
                           my_cart=my_cart, cart_others=cart_others)
 
     @app.post("/p/{pid}/fields")

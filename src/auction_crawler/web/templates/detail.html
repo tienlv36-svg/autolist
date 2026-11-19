@@ -170,7 +170,7 @@
   {% endfor %}
   <table class="tbl small files">
   {% for f in fl %}
-    <tr><td><a href="/files/{{ f.id }}" target="_blank">{{ f.filename }}</a>{% if f.source_url %} <span class="tag auto">nguồn</span>{% endif %}</td>
+    <tr><td><a href="/files/{{ f.id }}" target="_blank">{{ f.filename }}</a>{% if f.source_url %} <span class="tag auto">nguồn</span>{% if f.source_url in txt_by_url %} · <a class="link small" href="/nf/{{ txt_by_url[f.source_url] }}?txt=1" target="_blank">xem chữ</a>{% endif %}{% endif %}</td>
       <td>{{ fmt.size(f.size) }}</td>
       <td>{{ users[f.uploaded_by].full_name if f.uploaded_by in users else '' }}</td>
       <td>{{ fmt.dt(f.uploaded_at) }}</td>

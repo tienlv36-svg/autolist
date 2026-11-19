@@ -119,6 +119,12 @@ thông báo bán nhiều lô trong khi cổng ghi 1 tài sản → không so gi�
 được ưu tiên. Trên trang chi tiết: mục *“File đính kèm đã lưu trên máy chủ”* (mở file, xem chữ đã đọc); file nguồn
 đã lưu được mở từ máy chủ kể cả khi website nguồn gỡ.
 
+### Không lưu file gốc (từ 19/11/2026)
+
+File đính kèm chỉ được tải về để đọc chữ + thông số rồi xoá ngay (`docs_store_files: false`). Chữ đã đọc (.txt) được giữ để
+`docs-reparse` trích lại không cần tải. Trên trang chi tiết: mở file qua “Tài liệu nguồn” (link tới website nguồn), nút
+“xem chữ” cạnh mỗi file. Muốn lưu lại file gốc: đặt `docs_store_files: true`.
+
 ## 6. Xã/phường và tỉnh/thành (bộ lọc vị trí)
 
 | Nguồn | Cách dùng |

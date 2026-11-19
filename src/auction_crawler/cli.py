@@ -354,6 +354,21 @@ def docs_prune(days: int = typer.Option(30, "--days", help="Quy chế/thông bá
     console.print(f"Đã dọn {n} file, giải phóng {freed / 1e9:.1f} GB")
 
 
+@app.command("docs-purge")
+def docs_purge(yes: bool = typer.Option(False, "--yes", help="Xác nhận xoá")):
+    """Xoá HẾT file gốc đính kèm đã lưu trong data/files (giữ chữ đã đọc .txt và thông số; mở file qua link nguồn)."""
+    from .attachments import purge_files
+    from .scheduler import run_lock
+
+    if not yes:
+        console.print("Thêm --yes để xác nhận xoá hết file gốc đính kèm (giữ chữ đã đọc).")
+        raise typer.Exit(1)
+    s, repo = _setup()
+    with run_lock(s):
+        n, freed = purge_files(s, repo)
+    console.print(f"Đã xoá {n} file, giải phóng {freed / 1e9:.1f} GB")
+
+
 @app.command("docs-compress")
 def docs_compress(minutes: float = typer.Option(120, "--minutes", "-m", help="Giới hạn thời gian (phút)")):
     """Nén các bản scan PDF đã lưu (lớn trước) để giải phóng ổ cứng. Cần ghostscript (gs)."""
