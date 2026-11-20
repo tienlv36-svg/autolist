@@ -400,7 +400,7 @@ def all_labeled_prices(text: str) -> list[int]:
                    if int(re.sub(r"\D", "", m.group(1))) >= 1_000_000})
 
 
-_AUCTION_LABEL = re.compile(r"(?:thoi\s*gian|to\s*chuc)[^.:\n]{0,40}?(?:cuoc|phien|buoi)\s*dau\s*gia")
+_AUCTION_LABEL = re.compile(r"(?:thoi\s*gian|to\s*chuc)[^.:\n]{0,40}?(?:cuoc|phien|buoi)\s*(?:dau\s*gia|cong\s*bo\s*gia)")
 _DATE_RE = re.compile(r"(\d{1,2})\s*[/.-]\s*(\d{1,2})\s*[/.-]\s*(20\d\d)|"
                       r"ngay\s*(\d{1,2})\s*thang\s*(\d{1,2})\s*nam\s*(20\d\d)")
 
@@ -448,10 +448,13 @@ def doc_price(doc: dict | None, portal: int | None, property_count: int | None =
     if portal and not (1 / MAX_DOC_RATIO <= v / portal <= MAX_DOC_RATIO):
         return portal, None                           # chênh quá xa: không phải cùng một giá -> tin giá cổng, không báo
     from .web.fmt import money
-    dates = doc.get("auction_dates") or []
+    # ngày ghi trong CHÍNH file có giá (thông báo của phiên mới có thể đi kèm quy chế cũ của phiên trước)
+    pdates = doc.get("price_dates") if "price_dates" in doc else doc.get("auction_dates")
+    pdates = pdates or []
+    dates = pdates or doc.get("auction_dates") or []
     ad = auction_date.date() if isinstance(auction_date, datetime) else auction_date
-    date_ok = bool(ad and dates and any(abs((date.fromisoformat(d) - ad).days) <= 1 for d in dates))
-    if portal and ad and dates and not date_ok:
+    date_ok = bool(ad and pdates and any(abs((date.fromisoformat(d) - ad).days) <= 1 for d in pdates))
+    if portal and ad and dates and not date_ok and not any(abs((date.fromisoformat(d) - ad).days) <= 1 for d in dates):
         return portal, (f"File thông báo ghi giá {money(v)} nhưng là của phiên ngày "
                         f"{date.fromisoformat(dates[0]):%d/%m/%Y} – dùng giá cổng")
     if portal and any(_near(v, portal * k, 0.003) for k in (1.1, 1 / 1.1)):
@@ -532,6 +535,8 @@ def merge_file_infos(infos: list[tuple[dict, str]]) -> dict[str, Any]:
         vals = sorted({x for i, _ in infos for x in (i.get(f) or [])})
         if vals:
             out[f] = vals[:30]
+    if not out.get("multi") and len({i.get("starting_price") for i, _ in infos if i.get("starting_price")}) == 1:
+        out["price_dates"] = sorted({d for i, _ in infos if i.get("starting_price") for d in (i.get("auction_dates") or [])})
     for f in (*DOC_FIELDS, "ward", "province", "starting_price", "starting_price_words"):
         vals = [(i[f], m) for i, m in infos if i.get(f) not in (None, "")]
         if not vals:

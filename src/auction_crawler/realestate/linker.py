@@ -97,6 +97,7 @@ class Item:
     doc: dict | None = None
     gcn: frozenset = frozenset()     # số giấy chứng nhận nhắc trong tin (vd "BR 234700")
     places: tuple = ()               # nơi có từng tài sản (thông báo nhiều tài sản: mỗi tài sản một nơi)
+    portal: int | None = None        # giá trên cổng (trước khi đối chiếu file thông báo)
     partial: bool = False            # cổng ghi 1 tài sản nhưng file thông báo bán NHIỀU lô -> giá cổng có thể chỉ của 1 lô          # thông số trích từ file đính kèm (attachments.merge_file_infos)
 
 
@@ -180,7 +181,8 @@ def load_items(repo: Repository) -> list[Item]:
                         frozenset(gcn_serials(f"{r.title} {r.asset_name or ''}"[:3000])),
                         tuple(dict.fromkeys([*places.get(r.id, []), *(x.strip() for x in (address or "").split("|")
                                                                        if x.strip())])),
-                        bool(single and r.doc_info and r.doc_info.get("multi"))))
+                        partial=bool(single and r.doc_info and r.doc_info.get("multi")),
+                        portal=r.starting_price if single else None))
     return out
 
 
@@ -349,6 +351,23 @@ def _sessions(members: list[Item]) -> list[list[Item]]:
               [datetime.combine(x.publish_date, datetime.min.time()) for x in g if x.publish_date]
         return min(dts) if dts else datetime.max
     return sorted(by_day.values(), key=when)
+
+
+def _drop_other_session_doc_prices(members: list[Item]) -> None:
+    """Giá lấy theo file thông báo mà TRÙNG giá cổng của một phiên KHÁC cùng tài sản -> file đính kèm là của phiên đó
+    (thường là phiên trước) -> trả lại giá cổng."""
+    from ..web.fmt import money
+    for m in members:
+        if not (m.portal and m.price and m.price != m.portal and m.auction_date):
+            continue
+        for x in members:
+            if (x.portal and x.auction_date and abs((x.auction_date - m.auction_date).days) > 1
+                    and abs(x.portal - m.price) <= 0.002 * x.portal):
+                m.info.notes = [n for n in m.info.notes if "dùng giá trong thông báo" not in n]
+                m.info.notes.append(f"File thông báo ghi {money(m.price)} = giá cổng của phiên {x.auction_date:%d/%m/%Y} "
+                                    f"(file của phiên khác) – dùng giá cổng")
+                m.price = m.portal
+                break
 
 
 def _session_price(g: list[Item]) -> tuple[int | None, int | None]:
@@ -641,6 +660,7 @@ def _apply(s, prop: Property, members: list[Item], pn_all: dict, pn_by_prop: dic
             s.delete(pn)
             pn_all.pop(nid, None)
             pn_by_prop[prop.id].pop(nid, None)
+    _drop_other_session_doc_prices(members)
     priced = [(g, *_session_price(g)) for g in sessions]
     priced = [x for x in priced if x[1]]
     latest_g = sessions[-1]

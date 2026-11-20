@@ -263,3 +263,24 @@ def test_no_discount_when_a_session_file_sells_several_lots(env):  # noqa: F811
         assert p.session_count == 2 and p.price_latest == 4_635_000_000
         assert p.price_first is None and p.discount_pct is None
         assert any("nhiều tài sản" in n for n in p.auto_notes)
+
+
+def test_doc_price_equal_to_other_session_portal_is_dropped(env):  # noqa: F811
+    from auction_crawler.storage import NoticeRow
+    repo, c = env
+    text = "Quyền sử dụng đất thửa đất số 77, tờ bản đồ số 5, diện tích 300 m2 tại xã Tân Phú, tỉnh Đồng Nai"
+    _add(repo, "951", text, when=datetime.now() - timedelta(days=60))
+    _add(repo, "952", text, when=datetime.now() - timedelta(days=15),
+         doc={"starting_price": 30_787_000_000, "methods": {"starting_price": "text"}})
+    with repo.Session.begin() as s:
+        s.query(NoticeRow).filter_by(source_id="951").one().starting_price = 30_787_000_000
+        s.query(NoticeRow).filter_by(source_id="952").one().starting_price = 29_248_000_000
+    rebuild(repo)
+    with repo.session() as s:
+        p = s.query(Property).filter(Property.title.contains("thửa đất số 77")).one()
+        assert p.session_count == 2 and p.price_latest == 29_248_000_000 and p.discount_pct == 5.0
+        assert any("file của phiên khác" in n for n in p.auto_notes)
+        pid = p.id
+    login(c)
+    page = c.get(f"/p/{pid}").text
+    assert "file của phiên khác" in page and "29.248.000.000" in page

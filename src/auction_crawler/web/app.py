@@ -221,6 +221,17 @@ def create_app(repo: Repository | None = None, media_root: Path | None = None,
                     .where(func.json_extract(NoticeRow.doc_info, "$.starting_price") == dv)).all())
                 se["price"], se["price_note"] = doc_price(n0.doc_info, n0.starting_price if (n0.property_count or 1) == 1
                                                           else None, n0.property_count, n0.auction_date, shared)
+            # giá theo file thông báo trùng giá cổng của phiên khác -> file của phiên đó: dùng giá cổng (như gom phiên)
+            for se in sessions:
+                n0, sp = se["n"], se["price"]
+                if sp and n0.starting_price and sp != n0.starting_price and n0.auction_date:
+                    other = next((o for o in sessions if o is not se and o["n"].starting_price and o["n"].auction_date
+                                  and abs((o["n"].auction_date - n0.auction_date).days) > 1
+                                  and abs(o["n"].starting_price - sp) <= 0.002 * o["n"].starting_price), None)
+                    if other:
+                        se["price"] = n0.starting_price
+                        se["price_note"] = (f"File thông báo ghi {fmt.money(sp)} = giá cổng của phiên "
+                                            f"{other['n'].auction_date:%d/%m/%Y} (file của phiên khác) – dùng giá cổng")
             chart = fmt.price_chart([
                 (f"P{se['no']}" + (f" {se['n'].auction_date:%m/%y}" if se['n'].auction_date else ""),
                  se["price"],

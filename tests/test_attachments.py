@@ -495,3 +495,16 @@ def test_doc_price_vat_gap_big_gap_needs_date_and_shared_file():
     p, note = doc_price({**d, "methods": {"starting_price": "text"}}, 303_000_000, 1, None, True)
     assert p == 303_000_000 and "dùng chung" in note
     assert shared_doc_prices([("dgts", 313_100_000, 1, d), ("taisancong", 300_000_000, 1, d)]) == set()
+
+
+def test_auction_date_from_price_announcement_and_price_file_dates():
+    from datetime import datetime
+    from auction_crawler.attachments import auction_dates, doc_price, merge_file_infos
+    assert auction_dates("Thời gian tổ chức phiên công bố giá: Vào lúc 14 giờ 00 ngày 19/8/2026.") == ["2026-08-19"]
+    # thông báo phiên mới (08/10, không ghi giá) + quy chế cũ (28/08, có giá) -> giá thuộc phiên 28/08
+    tb = {"auction_dates": ["2026-10-08"]}
+    qc = {"starting_price": 2_558_743_000, "auction_dates": ["2026-08-28"]}
+    doc = merge_file_infos([(tb, "text"), (qc, "text")])
+    assert doc["price_dates"] == ["2026-08-28"]
+    p, note = doc_price(doc, 2_380_000_000, 1, datetime(2026, 10, 8, 9))
+    assert p == 2_380_000_000 and "28/08/2026" in note
